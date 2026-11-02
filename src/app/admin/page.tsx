@@ -35,6 +35,8 @@ export default function AdminPage() {
     useState<boolean>(false);
 
   const [matches, setMatches] = useState<MatchState[]>([]);
+  const [selectedMatchIds, setSelectedMatchIds] = useState<string[]>([]);
+  const [isDeletingSelected, setIsDeletingSelected] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -57,18 +59,25 @@ export default function AdminPage() {
   const [csvText, setCsvText] = useState('');
   const [csvPreview, setCsvPreview] = useState<CsvRowPreview[]>([]);
 
-  const fetchMatches = async () => {
-    setIsLoading(true);
+  const fetchMatches = async (showSpinner: boolean = false) => {
+    if (showSpinner) {
+      setIsLoading(true);
+    }
     try {
       const res = await fetch('/api/matches');
       const data = await res.json();
       if (data?.ok && Array.isArray(data.matches)) {
-        setMatches(data.matches);
+        const fetched: MatchState[] = data.matches;
+        setMatches(fetched);
+        const validIdSet = new Set(fetched.map((m) => m.match_id));
+        setSelectedMatchIds((prev) => prev.filter((id) => validIdSet.has(id)));
       }
     } catch {
       // ignore
     } finally {
-      setIsLoading(false);
+      if (showSpinner) {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -77,7 +86,7 @@ export default function AdminPage() {
       const savedAuth = window.sessionStorage.getItem(ADMIN_AUTH_STORAGE_KEY);
       if (savedAuth === 'true') {
         setIsAuthenticated(true);
-        fetchMatches();
+        fetchMatches(true);
       }
       setIsCheckingAuth(false);
     }
@@ -362,8 +371,14 @@ export default function AdminPage() {
     }
   };
 
-  // 관리자 전용: 경기 상태 업데이트 + 실시간 브로드캐스트 공통 헬퍼
+  // 관리자 전용: 경기 상태 업데이트 + 실시간 브로드캐스트 공통 헬퍼 (전체 목록 새로고침 없이 해당 행만 즉시 반영)
   const syncAdminMatchUpdate = async (nextState: MatchState) => {
+    setMatches((prev) =>
+      prev.map((item) =>
+        item.match_id === nextState.match_id ? nextState : item
+      )
+    );
+
     await fetch(`/api/matches/${encodeURIComponent(nextState.match_id)}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
@@ -393,8 +408,6 @@ export default function AdminPage() {
         }
       });
     }
-
-    await fetchMatches();
   };
 
   // 특정 경기의 자동 저장 ON/OFF 토글
@@ -446,11 +459,60 @@ export default function AdminPage() {
     }
   };
 
+  // 단일 행 즉시 삭제 (전체 목록 리로딩 없이 해당 기록만 제거)
   const handleDeleteMatch = async (matchId: string) => {
+    setMatches((prev) => prev.filter((m) => m.match_id !== matchId));
+    setSelectedMatchIds((prev) => prev.filter((id) => id !== matchId));
+
     await fetch(`/api/matches/${encodeURIComponent(matchId)}`, {
       method: 'DELETE',
-    });
-    await fetchMatches();
+    }).catch(() => {});
+  };
+
+  // 체크박스 개별 선택 / 해제
+  const handleToggleSelectMatch = (matchId: string) => {
+    setSelectedMatchIds((prev) =>
+      prev.includes(matchId)
+        ? prev.filter((id) => id !== matchId)
+        : [...prev, matchId]
+    );
+  };
+
+  // 체크박스 전체 선택 / 해제
+  const isAllSelected =
+    matches.length > 0 && selectedMatchIds.length === matches.length;
+
+  const handleToggleSelectAll = () => {
+    if (isAllSelected) {
+      setSelectedMatchIds([]);
+    } else {
+      setSelectedMatchIds(matches.map((m) => m.match_id));
+    }
+  };
+
+  // 체크박스로 선택한 경기 기록 일괄 삭제 (전체 목록 새로고침 없이 선택된 행만 즉시 제거)
+  const handleDeleteSelectedMatches = async () => {
+    if (selectedMatchIds.length === 0 || isDeletingSelected) return;
+    const idsToDelete = [...selectedMatchIds];
+    const deleteSet = new Set(idsToDelete);
+
+    setIsDeletingSelected(true);
+    // 화면 목록에서 선택된 기록만 즉시 제거 (새로고침 깜빡임 없음)
+    setMatches((prev) => prev.filter((m) => !deleteSet.has(m.match_id)));
+    setSelectedMatchIds([]);
+
+    try {
+      await fetch('/api/matches', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ match_ids: idsToDelete }),
+      });
+      setNotice(`선택한 ${idsToDelete.length}개의 경기 기록이 삭제되었습니다.`);
+    } catch {
+      setErrorMsg('선택한 경기 삭제 중 오류가 발생했습니다.');
+    } finally {
+      setIsDeletingSelected(false);
+    }
   };
 
   if (isCheckingAuth) {
@@ -864,17 +926,37 @@ export default function AdminPage() {
 
         {/* 3. 생성된 경기 및 고유 링크 목록 */}
         <section className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-bold text-white">
-              발급된 경기 세션 목록 ({matches.length})
-            </h2>
-            <button
-              type="button"
-              onClick={fetchMatches}
-              className="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold"
-            >
-              새로고침
-            </button>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <h2 className="text-lg font-bold text-white">
+                발급된 경기 세션 목록 ({matches.length})
+              </h2>
+              {selectedMatchIds.length > 0 && (
+                <span className="text-xs font-extrabold px-2.5 py-1 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40">
+                  {selectedMatchIds.length}개 선택됨
+                </span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={selectedMatchIds.length === 0 || isDeletingSelected}
+                onClick={handleDeleteSelectedMatches}
+                className="text-xs px-3.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-extrabold transition-all disabled:opacity-35 disabled:cursor-not-allowed"
+              >
+                {isDeletingSelected
+                  ? '삭제 중...'
+                  : `선택 기록 삭제 (${selectedMatchIds.length})`}
+              </button>
+              <button
+                type="button"
+                onClick={() => fetchMatches(false)}
+                className="text-xs px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold"
+              >
+                새로고침
+              </button>
+            </div>
           </div>
 
           {isLoading ? (
@@ -890,6 +972,15 @@ export default function AdminPage() {
               <table className="w-full text-left border-collapse text-sm">
                 <thead>
                   <tr className="border-b border-slate-800 text-xs uppercase text-slate-400">
+                    <th className="py-3 px-3 w-10 text-center">
+                      <input
+                        type="checkbox"
+                        checked={isAllSelected}
+                        onChange={handleToggleSelectAll}
+                        className="w-4 h-4 rounded accent-amber-500 cursor-pointer"
+                        title="전체 선택 / 해제"
+                      />
+                    </th>
                     <th className="py-3 px-3">대회 / 라운드</th>
                     <th className="py-3 px-3">현재 세트 FIRST / SECOND</th>
                     <th className="py-3 px-3">다전제 / 피어리스 / 상태</th>
@@ -903,8 +994,24 @@ export default function AdminPage() {
                   {matches.map((m) => {
                     const isAutoOn = isMatchAutoSaveEnabled(m);
                     const series = getSeriesState(m);
+                    const isSelected = selectedMatchIds.includes(m.match_id);
                     return (
-                      <tr key={m.match_id} className="hover:bg-slate-800/30">
+                      <tr
+                        key={m.match_id}
+                        className={`transition-colors ${
+                          isSelected
+                            ? 'bg-amber-500/10 hover:bg-amber-500/15'
+                            : 'hover:bg-slate-800/30'
+                        }`}
+                      >
+                        <td className="py-3 px-3 text-center">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => handleToggleSelectMatch(m.match_id)}
+                            className="w-4 h-4 rounded accent-amber-500 cursor-pointer"
+                          />
+                        </td>
                         <td className="py-3 px-3">
                           <div className="font-bold text-white">
                             {m.tournament_name || '공식 토너먼트'}

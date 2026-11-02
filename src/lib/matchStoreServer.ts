@@ -53,3 +53,21 @@ export async function deleteMatchFromStore(matchId: string): Promise<boolean> {
   return true;
 }
 
+export async function deleteMatchesFromStore(
+  matchIds: string[]
+): Promise<number> {
+  if (matchIds.length === 0) return 0;
+  const store = await ensureDbFile();
+  let deletedCount = 0;
+  for (const id of matchIds) {
+    if (store[id]) {
+      delete store[id];
+      deletedCount++;
+    }
+  }
+  if (deletedCount > 0) {
+    await writeDbFile(store);
+  }
+  return deletedCount;
+}
+

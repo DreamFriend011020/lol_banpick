@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
+  deleteMatchesFromStore,
   getAllMatchesFromStore,
   upsertMatchesToStore,
 } from '../../../lib/matchStoreServer';
@@ -169,6 +170,45 @@ export async function POST(req: NextRequest) {
           err instanceof Error
             ? err.message
             : '경기 생성 중 오류가 발생했습니다.',
+      },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const body = await req.json().catch(() => ({}));
+    const matchIds: string[] = Array.isArray(body?.match_ids)
+      ? body.match_ids.filter((id: unknown): id is string => typeof id === 'string' && id.trim().length > 0)
+      : [];
+
+    if (matchIds.length === 0) {
+      return NextResponse.json(
+        { ok: false, error: '삭제할 경기 ID 목록이 비어 있습니다.' },
+        { status: 400 }
+      );
+    }
+
+    if (supabase) {
+      await supabase.from('matches').delete().in('match_id', matchIds);
+    }
+
+    const deletedCount = await deleteMatchesFromStore(matchIds).catch(() => 0);
+
+    return NextResponse.json({
+      ok: true,
+      deletedCount: Math.max(deletedCount, matchIds.length),
+      deletedIds: matchIds,
+    });
+  } catch (err) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          err instanceof Error
+            ? err.message
+            : '선택 경기 삭제 중 오류가 발생했습니다.',
       },
       { status: 500 }
     );

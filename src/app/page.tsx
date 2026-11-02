@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { buildMatchRolePath, InviteRole } from '../lib/roleToken';
 
 export default function HomePage() {
   const router = useRouter();
@@ -18,12 +19,20 @@ export default function HomePage() {
   const [isCreatingScrim, setIsCreatingScrim] = useState(false);
   const [scrimError, setScrimError] = useState<string | null>(null);
   const [createdScrimId, setCreatedScrimId] = useState<string | null>(null);
-  const [copiedScrimLink, setCopiedScrimLink] = useState(false);
+  const [copiedRole, setCopiedRole] = useState<InviteRole | null>(null);
 
   const handleEnterMatch = (e: React.FormEvent) => {
     e.preventDefault();
     const trimmed = matchId.trim();
     if (!trimmed) return;
+
+    // 전체 URL이나 /match/xxx?key=... 형태를 붙여넣은 경우 그대로 경로 추출
+    const matchPath = trimmed.match(/\/match\/[^\s]+/);
+    if (matchPath) {
+      router.push(matchPath[0]);
+      return;
+    }
+
     router.push(`/match/${encodeURIComponent(trimmed)}`);
   };
 
@@ -78,15 +87,14 @@ export default function HomePage() {
     }
   };
 
-  const handleCopyScrimLink = async () => {
+  const handleCopyScrimRoleLink = async (role: InviteRole) => {
     if (!createdScrimId || typeof window === 'undefined') return;
-    const url = `${window.location.origin}/match/${encodeURIComponent(
-      createdScrimId
-    )}`;
+    const path = buildMatchRolePath(createdScrimId, role);
+    const url = `${window.location.origin}${path}`;
     try {
       await navigator.clipboard.writeText(url);
-      setCopiedScrimLink(true);
-      setTimeout(() => setCopiedScrimLink(false), 2000);
+      setCopiedRole(role);
+      setTimeout(() => setCopiedRole(null), 2000);
     } catch {
       // ignore
     }
@@ -219,37 +227,103 @@ export default function HomePage() {
               </form>
             </div>
 
-            {/* 생성 완료 시 즉시 링크 복사 및 입장 버튼 표시 */}
+            {/* 생성 완료 시 역할별 3개 전용 링크 복사 및 즉시 입장 버튼 표시 */}
             {createdScrimId && (
               <div className="rounded-xl bg-slate-950 border border-emerald-500/40 p-4 space-y-3">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-2">
                   <span className="text-xs font-bold text-emerald-400">
-                    ✓ 스크림 방 생성 완료!
+                    ✓ 팀별 전용 보안 링크 3종 발급 완료!
                   </span>
-                  <span className="font-mono text-xs text-slate-300">
-                    /match/{createdScrimId}
+                  <span className="font-mono text-[11px] text-slate-400">
+                    ID: {createdScrimId}
                   </span>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={handleCopyScrimLink}
-                    className="py-2 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-bold text-amber-300"
-                  >
-                    {copiedScrimLink ? '✓ 링크 복사됨!' : '상대 팀 공유 링크 복사'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      router.push(
-                        `/match/${encodeURIComponent(createdScrimId)}`
-                      )
-                    }
-                    className="py-2 px-3 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-extrabold"
-                  >
-                    방으로 바로 입장 →
-                  </button>
+                <p className="text-[11px] text-slate-400">
+                  각 링크로 접속한 사람만 해당 팀의 조작 권한을 가집니다. 상대 팀에게 해당 팀의 전용 링크를 전달하세요.
+                </p>
+
+                <div className="space-y-2">
+                  {/* 1. FIRST 팀장 전용 링크 */}
+                  <div className="flex items-center justify-between gap-2 p-2 rounded-lg bg-amber-500/10 border border-amber-500/30">
+                    <span className="text-xs font-extrabold text-amber-300 truncate">
+                      1. FIRST 팀 ({scrimFirstTeam || 'FIRST'}) 전용
+                    </span>
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => handleCopyScrimRoleLink('FIRST')}
+                        className="px-2.5 py-1 rounded bg-slate-900 hover:bg-slate-800 border border-amber-500/40 text-[11px] font-bold text-amber-300"
+                      >
+                        {copiedRole === 'FIRST' ? '✓ 복사됨' : '링크 복사'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          router.push(
+                            buildMatchRolePath(createdScrimId, 'FIRST')
+                          )
+                        }
+                        className="px-2.5 py-1 rounded bg-amber-500 hover:bg-amber-400 text-slate-950 text-[11px] font-extrabold"
+                      >
+                        입장 →
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* 2. SECOND 팀장 전용 링크 */}
+                  <div className="flex items-center justify-between gap-2 p-2 rounded-lg bg-cyan-500/10 border border-cyan-500/30">
+                    <span className="text-xs font-extrabold text-cyan-300 truncate">
+                      2. SECOND 팀 ({scrimSecondTeam || 'SECOND'}) 전용
+                    </span>
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => handleCopyScrimRoleLink('SECOND')}
+                        className="px-2.5 py-1 rounded bg-slate-900 hover:bg-slate-800 border border-cyan-500/40 text-[11px] font-bold text-cyan-300"
+                      >
+                        {copiedRole === 'SECOND' ? '✓ 복사됨' : '링크 복사'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          router.push(
+                            buildMatchRolePath(createdScrimId, 'SECOND')
+                          )
+                        }
+                        className="px-2.5 py-1 rounded bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-[11px] font-extrabold"
+                      >
+                        입장 →
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* 3. 옵저버/관전 전용 링크 */}
+                  <div className="flex items-center justify-between gap-2 p-2 rounded-lg bg-slate-900 border border-slate-800">
+                    <span className="text-xs font-bold text-slate-300 truncate">
+                      3. 옵저버 / 관전 전용 (읽기 전용)
+                    </span>
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => handleCopyScrimRoleLink('OBSERVER')}
+                        className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[11px] font-bold text-slate-300"
+                      >
+                        {copiedRole === 'OBSERVER' ? '✓ 복사됨' : '링크 복사'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          router.push(
+                            buildMatchRolePath(createdScrimId, 'OBSERVER')
+                          )
+                        }
+                        className="px-2.5 py-1 rounded bg-slate-700 hover:bg-slate-600 text-white text-[11px] font-bold"
+                      >
+                        관전 입장 →
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}

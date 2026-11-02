@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { MatchState } from '../../types/match';
+import { buildMatchRolePath, InviteRole } from '../../lib/roleToken';
 
 interface CsvRowPreview {
   tournament_name: string;
@@ -282,14 +283,14 @@ export default function AdminPage() {
     document.body.removeChild(link);
   };
 
-  // 경기 링크 클립보드 복사
-  const handleCopyLink = async (matchId: string) => {
-    const fullUrl = `${window.location.origin}/match/${encodeURIComponent(
-      matchId
-    )}`;
+  // 경기 역할별 전용 링크 클립보드 복사
+  const handleCopyRoleLink = async (matchId: string, role: InviteRole) => {
+    const path = buildMatchRolePath(matchId, role);
+    const fullUrl = `${window.location.origin}${path}`;
+    const copyTag = `${matchId}:${role}`;
     try {
       await navigator.clipboard.writeText(fullUrl);
-      setCopiedId(matchId);
+      setCopiedId(copyTag);
       setTimeout(() => setCopiedId(null), 2000);
     } catch {
       // ignore
@@ -662,7 +663,7 @@ export default function AdminPage() {
                     <th className="py-3 px-3">SECOND 팀</th>
                     <th className="py-3 px-3">진행 상태</th>
                     <th className="py-3 px-3">자동 저장</th>
-                    <th className="py-3 px-3">고유 링크 (/match/[match_id])</th>
+                    <th className="py-3 px-3">팀별 전용 링크 복사 (보안 키 포함)</th>
                     <th className="py-3 px-3 text-right">관리</th>
                   </tr>
                 </thead>
@@ -676,7 +677,7 @@ export default function AdminPage() {
                             {m.tournament_name || '공식 토너먼트'}
                           </div>
                           <div className="text-xs text-slate-400">
-                            {m.round_name || '-'}
+                            {m.round_name || '-'} · <span className="font-mono">{m.match_id}</span>
                           </div>
                         </td>
                         <td className="py-3 px-3 font-extrabold text-amber-300">
@@ -703,22 +704,43 @@ export default function AdminPage() {
                             {isAutoOn ? 'ON' : 'OFF'}
                           </button>
                         </td>
-                        <td className="py-3 px-3 font-mono text-xs text-slate-300">
-                          /match/{m.match_id}
+                        <td className="py-3 px-3">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleCopyRoleLink(m.match_id, 'FIRST')}
+                              className="px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-xs font-extrabold text-amber-300 border border-amber-500/40"
+                            >
+                              {copiedId === `${m.match_id}:FIRST`
+                                ? '✓ FIRST 복사됨'
+                                : `FIRST(${m.team_first_name}) 링크`}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleCopyRoleLink(m.match_id, 'SECOND')}
+                              className="px-2.5 py-1 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 text-xs font-extrabold text-cyan-300 border border-cyan-500/40"
+                            >
+                              {copiedId === `${m.match_id}:SECOND`
+                                ? '✓ SECOND 복사됨'
+                                : `SECOND(${m.team_second_name}) 링크`}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleCopyRoleLink(m.match_id, 'OBSERVER')}
+                              className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-300 border border-slate-700"
+                            >
+                              {copiedId === `${m.match_id}:OBSERVER`
+                                ? '✓ 관전 복사됨'
+                                : '옵저버(관전) 링크'}
+                            </button>
+                          </div>
                         </td>
-                        <td className="py-3 px-3 text-right space-x-2">
-                          <button
-                            type="button"
-                            onClick={() => handleCopyLink(m.match_id)}
-                            className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-bold text-amber-300 border border-slate-700"
-                          >
-                            {copiedId === m.match_id ? '✓ 복사됨' : '링크 복사'}
-                          </button>
+                        <td className="py-3 px-3 text-right space-x-1.5 whitespace-nowrap">
                           <Link
-                            href={`/match/${encodeURIComponent(m.match_id)}`}
+                            href={buildMatchRolePath(m.match_id, 'OBSERVER')}
                             className="inline-block px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-extrabold"
                           >
-                            입장
+                            관전 입장
                           </Link>
                           <button
                             type="button"

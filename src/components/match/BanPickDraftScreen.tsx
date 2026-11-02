@@ -588,7 +588,7 @@ export default function BanPickDraftScreen({
             handlePickSlotSwapClick(side, slotIndex);
           }
         }}
-        className={`relative h-20 md:h-24 rounded-xl overflow-hidden border transition-all flex items-center ${
+        className={`relative h-[76px] md:h-[82px] rounded-xl overflow-hidden border transition-all flex items-center ${
           isBlue ? 'flex-row' : 'flex-row-reverse text-right'
         } ${
           canSwapThisSide ? 'cursor-pointer hover:scale-[1.01]' : ''
@@ -624,7 +624,7 @@ export default function BanPickDraftScreen({
 
         {/* 챔피언 정사각형 초상화 영역 */}
         <div
-          className={`relative z-10 w-16 h-16 md:w-20 md:h-20 m-2 rounded-lg overflow-hidden border flex-shrink-0 flex items-center justify-center bg-slate-950 ${
+          className={`relative z-10 w-14 h-14 md:w-16 md:h-16 m-1.5 rounded-lg overflow-hidden border flex-shrink-0 flex items-center justify-center bg-slate-950 ${
             isSwapSelected
               ? 'border-amber-400'
               : isCurrentPickSlot

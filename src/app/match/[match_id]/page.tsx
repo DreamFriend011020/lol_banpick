@@ -7,6 +7,7 @@ import { RealtimeChannel } from '@supabase/supabase-js';
 import { BanPickAction, MatchState, RofsAction } from '../../../types/match';
 import { transitionRofsState } from '../../../lib/rofsMachine';
 import { transitionBanPickState } from '../../../lib/banpickMachine';
+import { resolveRoleFromKey } from '../../../lib/roleToken';
 import { supabase } from '../../../lib/supabaseClient';
 import RofsSelectionScreen, {
   ViewerRole,
@@ -14,30 +15,28 @@ import RofsSelectionScreen, {
 import BanPickDraftScreen from '../../../components/match/BanPickDraftScreen';
 
 interface StoredSession {
-  role: ViewerRole;
-  enteredName: string;
+  key: string;
 }
 
 function getStorageKey(matchId: string): string {
-  return `lol_banpick_session_${matchId}`;
+  return `lol_banpick_key_${matchId}`;
 }
 
-function saveRoleSession(matchId: string, session: StoredSession) {
+function saveRoleKeySession(matchId: string, accessKey: string) {
   if (typeof window === 'undefined') return;
-  const key = getStorageKey(matchId);
-  window.localStorage.setItem(key, JSON.stringify(session));
-  document.cookie = `${encodeURIComponent(key)}=${encodeURIComponent(
-    session.role
-  )}; path=/; max-age=86400`;
+  const storageKey = getStorageKey(matchId);
+  const payload: StoredSession = { key: accessKey };
+  window.localStorage.setItem(storageKey, JSON.stringify(payload));
 }
 
-function loadRoleSession(matchId: string): StoredSession | null {
+function loadRoleKeySession(matchId: string): string | null {
   if (typeof window === 'undefined') return null;
-  const key = getStorageKey(matchId);
-  const raw = window.localStorage.getItem(key);
+  const storageKey = getStorageKey(matchId);
+  const raw = window.localStorage.getItem(storageKey);
   if (!raw) return null;
   try {
-    return JSON.parse(raw) as StoredSession;
+    const parsed = JSON.parse(raw) as StoredSession;
+    return parsed.key ?? null;
   } catch {
     return null;
   }
@@ -138,10 +137,6 @@ function MatchRoomContent() {
   const matchId = params?.match_id ?? 'demo-match';
 
   const [viewerRole, setViewerRole] = useState<ViewerRole>('OBSERVER');
-  const [enteredTeamName, setEnteredTeamName] = useState<string>('');
-  const [isRoleModalOpen, setIsRoleModalOpen] = useState<boolean>(false);
-  const [modalTeamInput, setModalTeamInput] = useState<string>('');
-  const [roleNotice, setRoleNotice] = useState<string | null>(null);
 
   const [match, setMatch] = useState<MatchState>({
     match_id: matchId,
@@ -159,36 +154,26 @@ function MatchRoomContent() {
     banpick_state: null,
   });
 
-  const [isLoadingMatch, setIsLoadingMatch] = useState<boolean>(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const localBroadcastRef = useRef<BroadcastChannel | null>(null);
 
   // ===========================================================================
-  // 0. 로컬 스토리지 / URL 쿼리에서 세션(Role) 복원 또는 팀 이름 입력 모달 표시
+  // 0. 팀별 전용 초대 링크(?key=...) 보안 키를 검증하여 권한(FIRST / SECOND / OBSERVER) 고정
   // ===========================================================================
   useEffect(() => {
-    const queryRole = searchParams?.get('role')?.toUpperCase();
-    if (
-      queryRole === 'FIRST' ||
-      queryRole === 'SECOND' ||
-      queryRole === 'OBSERVER'
-    ) {
-      setViewerRole(queryRole);
-      saveRoleSession(matchId, { role: queryRole, enteredName: queryRole });
-      setIsRoleModalOpen(false);
+    const queryKey = searchParams?.get('key');
+    if (queryKey) {
+      const assignedRole = resolveRoleFromKey(matchId, queryKey);
+      setViewerRole(assignedRole);
+      saveRoleKeySession(matchId, queryKey);
       return;
     }
 
-    const saved = loadRoleSession(matchId);
-    if (saved) {
-      setViewerRole(saved.role);
-      setEnteredTeamName(saved.enteredName);
-      setIsRoleModalOpen(false);
-    } else {
-      setIsRoleModalOpen(true);
-    }
+    const savedKey = loadRoleKeySession(matchId);
+    const assignedRole = resolveRoleFromKey(matchId, savedKey);
+    setViewerRole(assignedRole);
   }, [matchId, searchParams]);
 
   // ===========================================================================
@@ -211,8 +196,6 @@ function MatchRoomContent() {
         }
       } catch {
         // ignore
-      } finally {
-        if (isMounted) setIsLoadingMatch(false);
       }
     };
 
@@ -320,50 +303,7 @@ function MatchRoomContent() {
   }, [matchId]);
 
   // ===========================================================================
-  // 2. 모달 창에서 '본인의 팀 이름' 입력 시 권한(FIRST / SECOND / OBSERVER) 판별
-  // ===========================================================================
-  const handleVerifyTeamName = (e: React.FormEvent) => {
-    e.preventDefault();
-    const trimmed = modalTeamInput.trim();
-    const normalizedInput = trimmed.toLowerCase();
-    const firstNorm = match.team_first_name.trim().toLowerCase();
-    const secondNorm = match.team_second_name.trim().toLowerCase();
-
-    let assignedRole: ViewerRole = 'OBSERVER';
-    let noticeText =
-      '일치하는 참가 팀 이름이 없어 [옵저버 / 관전(읽기 전용)] 권한으로 입장했습니다.';
-
-    if (normalizedInput && normalizedInput === firstNorm) {
-      assignedRole = 'FIRST';
-      noticeText = `'${match.team_first_name}' 팀 확인 완료 — [FIRST 팀] 권한이 부여되었습니다.`;
-    } else if (normalizedInput && normalizedInput === secondNorm) {
-      assignedRole = 'SECOND';
-      noticeText = `'${match.team_second_name}' 팀 확인 완료 — [SECOND 팀] 권한이 부여되었습니다.`;
-    }
-
-    setViewerRole(assignedRole);
-    setEnteredTeamName(trimmed || '옵저버');
-    saveRoleSession(matchId, {
-      role: assignedRole,
-      enteredName: trimmed || '옵저버',
-    });
-    setRoleNotice(noticeText);
-    setIsRoleModalOpen(false);
-  };
-
-  const handleEnterAsSpectator = () => {
-    setViewerRole('OBSERVER');
-    setEnteredTeamName('옵저버/관전');
-    saveRoleSession(matchId, {
-      role: 'OBSERVER',
-      enteredName: '옵저버/관전',
-    });
-    setRoleNotice('[옵저버 / 관전(운영진)] 읽기 전용 권한으로 입장했습니다.');
-    setIsRoleModalOpen(false);
-  };
-
-  // ===========================================================================
-  // 3. 상태 동기화 공통 헬퍼 (Broadcast + 로컬 서버 스토어 + Supabase DB)
+  // 2. 상태 동기화 공통 헬퍼 (Broadcast + 로컬 서버 스토어 + Supabase DB)
   // ===========================================================================
   const broadcastAndPersistState = useCallback(
     async (
@@ -509,143 +449,45 @@ function MatchRoomContent() {
 
   return (
     <div className="relative">
-      {/* =====================================================================
-          입장 시 팀 이름 확인 모달 (로컬 스토리지/쿠키에 세션 저장)
-      ===================================================================== */}
-      {isRoleModalOpen && !isLoadingMatch && (
-        <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="max-w-md w-full bg-slate-900 border border-slate-700 rounded-2xl p-6 shadow-2xl space-y-5">
-            <div className="space-y-1.5 text-center">
-              <span className="text-xs font-bold uppercase tracking-widest px-2.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                {match.tournament_name || '공식 토너먼트'} · {match.round_name || 'Match'}
-              </span>
-              <h2 className="text-xl font-black text-white pt-1">
-                참가 팀 이름 확인
-              </h2>
-              <p className="text-xs text-slate-400">
-                본인의 팀 이름을 입력하면 대진표(
-                <strong className="text-amber-300">{match.team_first_name}</strong>{' '}
-                vs{' '}
-                <strong className="text-cyan-300">{match.team_second_name}</strong>
-                )와 대조하여 자동으로 팀장 권한이 부여됩니다.
-              </p>
-            </div>
-
-            <form onSubmit={handleVerifyTeamName} className="space-y-3">
-              <div>
-                <label className="block text-xs font-bold text-slate-300 mb-1.5">
-                  본인의 팀 이름 입력
-                </label>
-                <input
-                  type="text"
-                  autoFocus
-                  value={modalTeamInput}
-                  onChange={(e) => setModalTeamInput(e.target.value)}
-                  placeholder={`예: ${match.team_first_name} 또는 ${match.team_second_name}`}
-                  className="w-full rounded-xl bg-slate-950 border border-slate-700 px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-400"
-                />
-              </div>
-
-              <button
-                type="submit"
-                className="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-sm transition-all"
-              >
-                팀 이름으로 권한 확인 후 입장
-              </button>
-            </form>
-
-            <div className="relative flex py-1 items-center">
-              <div className="flex-grow border-t border-slate-800" />
-              <span className="flex-shrink mx-3 text-xs text-slate-500">
-                또는
-              </span>
-              <div className="flex-grow border-t border-slate-800" />
-            </div>
-
-            <button
-              type="button"
-              onClick={handleEnterAsSpectator}
-              className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-bold text-slate-200 transition-colors"
-            >
-              옵저버 / 관전(운영진) 모드로 입장 (읽기 전용)
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* 상단 상태 & 권한 전환 바 */}
+      {/* 상단 고정 상태 바 (전용 초대 링크로 부여된 권한만 표시, 임의 변경 불가) */}
       <div className="bg-slate-900 border-b border-slate-800 px-4 py-2 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
         <div className="flex flex-wrap items-center gap-3">
           <Link
-            href="/admin"
-            className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-cyan-300 font-bold border border-slate-700"
+            href="/"
+            className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold border border-slate-700"
           >
-            관리자(/admin)
+            ← 메인 홈
           </Link>
           <span>
-            현재 권한:{' '}
-            <strong className="text-amber-300">
+            접속 권한 (전용 링크 인증됨):{' '}
+            <strong
+              className={
+                viewerRole === 'FIRST'
+                  ? 'text-amber-300'
+                  : viewerRole === 'SECOND'
+                    ? 'text-cyan-300'
+                    : 'text-slate-300'
+              }
+            >
               {viewerRole === 'FIRST'
-                ? `FIRST 팀 (${match.team_first_name})`
+                ? `🔒 FIRST 팀장 (${match.team_first_name})`
                 : viewerRole === 'SECOND'
-                  ? `SECOND 팀 (${match.team_second_name})`
-                  : '옵저버/관전 (읽기 전용)'}
+                  ? `🔒 SECOND 팀장 (${match.team_second_name})`
+                  : '👀 옵저버 / 관전 전용 (읽기 전용)'}
             </strong>
-            {enteredTeamName && ` (입력값: ${enteredTeamName})`}
           </span>
-          {roleNotice && (
-            <span className="text-emerald-400 font-medium hidden md:inline">
-              · {roleNotice}
-            </span>
-          )}
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() =>
-              handleDispatchBanPick({
-                type: 'TOGGLE_AUTO_SAVE',
-                enabled: match.auto_save_enabled === false ? true : false,
-              })
-            }
-            className={`px-3 py-1 rounded font-bold border transition-colors ${
+          <span
+            className={`px-3 py-1 rounded font-bold border ${
               match.auto_save_enabled !== false
-                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30'
-                : 'bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700'
+                ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                : 'bg-slate-800/80 text-slate-400 border-slate-700'
             }`}
           >
             결과 자동 저장: {match.auto_save_enabled !== false ? 'ON' : 'OFF'}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              setModalTeamInput('');
-              setIsRoleModalOpen(true);
-            }}
-            className="px-3 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-semibold"
-          >
-            팀 이름 다시 입력 (모달)
-          </button>
-
-          {(['FIRST', 'SECOND', 'OBSERVER'] as ViewerRole[]).map((role) => (
-            <button
-              key={role}
-              type="button"
-              onClick={() => {
-                setViewerRole(role);
-                saveRoleSession(matchId, { role, enteredName: role });
-              }}
-              className={`px-2.5 py-1 rounded font-semibold transition-colors ${
-                viewerRole === role
-                  ? 'bg-amber-500 text-slate-950'
-                  : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-              }`}
-            >
-              {role}
-            </button>
-          ))}
+          </span>
         </div>
       </div>
 

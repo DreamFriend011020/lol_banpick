@@ -6,6 +6,7 @@ import { MatchState } from '../../types/match';
 import { buildMatchRolePath, InviteRole } from '../../lib/roleToken';
 import {
   getSeriesState,
+  isMatchAutoSaveEnabled,
   transitionBanPickState,
 } from '../../lib/banpickMachine';
 import { supabase } from '../../lib/supabaseClient';
@@ -398,13 +399,14 @@ export default function AdminPage() {
 
   // 특정 경기의 자동 저장 ON/OFF 토글
   const handleToggleMatchAutoSave = async (m: MatchState) => {
-    const nextVal = m.auto_save_enabled === false ? true : false;
-    await fetch(`/api/matches/${encodeURIComponent(m.match_id)}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ auto_save_enabled: nextVal }),
+    const currentVal = isMatchAutoSaveEnabled(m);
+    const res = transitionBanPickState(m, {
+      type: 'TOGGLE_AUTO_SAVE',
+      enabled: !currentVal,
     });
-    await fetchMatches();
+    if (res.ok) {
+      await syncAdminMatchUpdate(res.state);
+    }
   };
 
   // 특정 경기의 하드 피어리스 ON/OFF 토글 (관리자 전용)
@@ -899,7 +901,7 @@ export default function AdminPage() {
                 </thead>
                 <tbody className="divide-y divide-slate-800/70">
                   {matches.map((m) => {
-                    const isAutoOn = m.auto_save_enabled !== false;
+                    const isAutoOn = isMatchAutoSaveEnabled(m);
                     const series = getSeriesState(m);
                     return (
                       <tr key={m.match_id} className="hover:bg-slate-800/30">

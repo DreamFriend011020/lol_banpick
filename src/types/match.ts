@@ -49,6 +49,9 @@ export interface SeriesState {
   set_winners?: string[];            // 각 세트별 승리 팀 기록 (패배팀이 다음 세트 FIRST가 됨)
   team_a_name: string;               // 1번 고정 링크(?key=f1...)를 발급받은 기준 팀 이름 (1세트 FIRST)
   team_b_name: string;               // 2번 고정 링크(?key=s2...)를 발급받은 기준 팀 이름 (1세트 SECOND)
+  auto_save_enabled?: boolean;       // 밴픽 종료 시 자동 저장 ON/OFF (Supabase JSONB 동기화용)
+  drive_folder_id?: string;          // 지정 구글 드라이브 폴더 ID/링크
+  drive_webhook_url?: string;        // 지정 구글 드라이브 웹앱 URL
 }
 
 /**

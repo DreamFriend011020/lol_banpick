@@ -4,6 +4,10 @@ import {
   getMatchByIdFromStore,
   upsertMatchesToStore,
 } from '../../../../lib/matchStoreServer';
+import {
+  getSeriesState,
+  isMatchAutoSaveEnabled,
+} from '../../../../lib/banpickMachine';
 import { supabase } from '../../../../lib/supabaseClient';
 import { MatchState } from '../../../../types/match';
 
@@ -21,7 +25,20 @@ export async function GET(
       .single();
 
     if (!error && data) {
-      return NextResponse.json({ ok: true, match: data });
+      const m = data as MatchState;
+      return NextResponse.json({
+        ok: true,
+        match: {
+          ...m,
+          auto_save_enabled: isMatchAutoSaveEnabled(m),
+          drive_folder_id:
+            m.drive_folder_id ??
+            m.rofs_submissions?.series_state?.drive_folder_id,
+          drive_webhook_url:
+            m.drive_webhook_url ??
+            m.rofs_submissions?.series_state?.drive_webhook_url,
+        },
+      });
     }
   }
 
@@ -46,6 +63,49 @@ export async function PATCH(
     };
     const existing = await getMatchByIdFromStore(matchId);
 
+    const resolvedAutoSave =
+      typeof body.auto_save_enabled === 'boolean'
+        ? body.auto_save_enabled
+        : typeof body.rofs_submissions?.series_state?.auto_save_enabled ===
+            'boolean'
+          ? body.rofs_submissions.series_state.auto_save_enabled
+          : existing
+            ? isMatchAutoSaveEnabled(existing)
+            : false;
+
+    const resolvedFolderId =
+      body.drive_folder_id !== undefined
+        ? body.drive_folder_id
+        : body.rofs_submissions?.series_state?.drive_folder_id ??
+          existing?.drive_folder_id;
+
+    const resolvedWebhookUrl =
+      body.drive_webhook_url !== undefined
+        ? body.drive_webhook_url
+        : body.rofs_submissions?.series_state?.drive_webhook_url ??
+          existing?.drive_webhook_url;
+
+    const baseRofs =
+      body.rofs_submissions !== undefined
+        ? body.rofs_submissions
+        : existing?.rofs_submissions ?? {
+            first_choice: null,
+            second_choice: null,
+          };
+
+    const baseSeries = getSeriesState({
+      ...(existing ?? ({} as MatchState)),
+      ...(body as MatchState),
+      rofs_submissions: baseRofs,
+    });
+
+    const syncedSeries = {
+      ...baseSeries,
+      auto_save_enabled: resolvedAutoSave,
+      drive_folder_id: resolvedFolderId,
+      drive_webhook_url: resolvedWebhookUrl,
+    };
+
     const updated: MatchState = {
       match_id: matchId,
       tournament_name:
@@ -64,33 +124,19 @@ export async function PATCH(
         body.pick_turn !== undefined
           ? body.pick_turn
           : existing?.pick_turn ?? null,
-      rofs_submissions:
-        body.rofs_submissions !== undefined
-          ? body.rofs_submissions
-          : existing?.rofs_submissions ?? {
-              first_choice: null,
-              second_choice: null,
-            },
+      rofs_submissions: {
+        first_choice: baseRofs?.first_choice ?? null,
+        second_choice: baseRofs?.second_choice ?? null,
+        series_state: syncedSeries,
+      },
       banpick_state:
         body.banpick_state !== undefined
           ? body.banpick_state
           : existing?.banpick_state ?? null,
-      auto_save_enabled:
-        body.auto_save_enabled !== undefined
-          ? body.auto_save_enabled
-          : existing?.auto_save_enabled ?? true,
-      drive_folder_id:
-        body.drive_folder_id !== undefined
-          ? body.drive_folder_id
-          : existing?.drive_folder_id,
-      drive_webhook_url:
-        body.drive_webhook_url !== undefined
-          ? body.drive_webhook_url
-          : existing?.drive_webhook_url,
-      series_state:
-        body.series_state !== undefined
-          ? body.series_state
-          : body.rofs_submissions?.series_state ?? existing?.series_state,
+      auto_save_enabled: resolvedAutoSave,
+      drive_folder_id: resolvedFolderId,
+      drive_webhook_url: resolvedWebhookUrl,
+      series_state: syncedSeries,
       created_at: existing?.created_at ?? new Date().toISOString(),
     };
 

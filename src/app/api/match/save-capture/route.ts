@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { promises as fs } from 'fs';
 import path from 'path';
+import { isMatchAutoSaveEnabled } from '../../../../lib/banpickMachine';
 import { MatchState } from '../../../../types/match';
 
 // 동일 경기(matchId)가 여러 클라이언트에서 동시에 자동 업로드되는 것을 방지하는 캐시
@@ -92,6 +93,15 @@ export async function POST(req: NextRequest) {
         { ok: false, error: '유효하지 않은 이미지 데이터입니다.' },
         { status: 400 }
       );
+    }
+
+    // 수동 저장 버튼(isManualRetry)이 아닌 자동 저장 호출일 때, 해당 방의 자동 저장이 OFF이면 즉시 차단
+    if (!isManualRetry && matchState && !isMatchAutoSaveEnabled(matchState)) {
+      return NextResponse.json({
+        ok: false,
+        skippedAutoSaveOff: true,
+        error: '이 경기는 자동 저장이 OFF로 설정되어 있습니다.',
+      });
     }
 
     const safeFileName = (

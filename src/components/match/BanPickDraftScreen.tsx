@@ -14,6 +14,7 @@ import {
   getTeamFearlessChampionIds,
   getUnavailableChampionIds,
   isInSwapPhase,
+  isMatchAutoSaveEnabled,
   resolveViewerSide,
   SWAP_DURATION_SECONDS,
   TOURNAMENT_DRAFT_SEQUENCE,
@@ -251,7 +252,7 @@ export default function BanPickDraftScreen({
     setRemainingSeconds(maxSec);
   }, [match.status, bp?.current_turn_index]);
 
-  const isAutoSaveOn = match.auto_save_enabled !== false;
+  const isAutoSaveOn = isMatchAutoSaveEnabled(match);
 
   // 밴픽 최종 종료('COMPLETED') 시 자동 저장 ON 상태일 때만 지정된 구글 드라이브 폴더 및 운영진 화면에 자동 저장
   useEffect(() => {
@@ -268,7 +269,7 @@ export default function BanPickDraftScreen({
 
     if (!isAutoSaveOn) {
       setSavedNotice(
-        '자동 저장이 OFF 상태입니다. 필요 시 우측 버튼을 눌러 수동 저장하세요.'
+        '자동 저장이 OFF 상태입니다. 필요 시 아래 버튼을 눌러 수동 저장하세요.'
       );
       return;
     }

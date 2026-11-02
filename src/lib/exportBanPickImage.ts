@@ -1,4 +1,7 @@
-import { getTeamFearlessChampionIds } from './banpickMachine';
+import {
+  getTeamFearlessChampionIds,
+  isMatchAutoSaveEnabled,
+} from './banpickMachine';
 import { ChampionInfo, MatchState } from '../types/match';
 
 const POSITION_LABELS = ['TOP', 'JGL', 'MID', 'BOT', 'SUP'];
@@ -479,6 +482,14 @@ export async function saveBanPickScreenForStaff(
   driveUrl?: string;
   driveError?: string;
 }> {
+  // 수동 저장 버튼 클릭이 아닌 자동 저장 호출일 때, 자동 저장이 OFF이면 브라우저 다운로드 및 서버 업로드를 전면 차단
+  if (!options.isManualRetry && !isMatchAutoSaveEnabled(match)) {
+    return {
+      ok: false,
+      fileName: '',
+    };
+  }
+
   const blueTeam = match.selected_side?.blue ?? match.team_first_name;
   const redTeam = match.selected_side?.red ?? match.team_second_name;
   const dateStr = new Date()

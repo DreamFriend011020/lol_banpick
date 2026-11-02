@@ -3,6 +3,7 @@ import {
   getAllMatchesFromStore,
   upsertMatchesToStore,
 } from '../../../lib/matchStoreServer';
+import { isMatchAutoSaveEnabled } from '../../../lib/banpickMachine';
 import { supabase } from '../../../lib/supabaseClient';
 import { MatchState, SeriesState } from '../../../types/match';
 
@@ -35,7 +36,16 @@ export async function GET() {
       .order('created_at', { ascending: false });
 
     if (!error && data) {
-      return NextResponse.json({ ok: true, matches: data });
+      const normalized = (data as MatchState[]).map((m) => ({
+        ...m,
+        auto_save_enabled: isMatchAutoSaveEnabled(m),
+        drive_folder_id:
+          m.drive_folder_id ?? m.rofs_submissions?.series_state?.drive_folder_id,
+        drive_webhook_url:
+          m.drive_webhook_url ??
+          m.rofs_submissions?.series_state?.drive_webhook_url,
+      }));
+      return NextResponse.json({ ok: true, matches: normalized });
     }
   }
 
@@ -70,6 +80,9 @@ export async function POST(req: NextRequest) {
 
       const game1First = schedule[0] === second ? second : first;
       const game1Second = game1First === first ? second : first;
+      const autoSaveOn = Boolean(item.auto_save_enabled);
+      const folderId = item.drive_folder_id?.trim() || undefined;
+      const webhookUrl = item.drive_webhook_url?.trim() || undefined;
 
       const initialSeries: SeriesState = {
         total_games: totalGames,
@@ -79,6 +92,9 @@ export async function POST(req: NextRequest) {
         game_first_teams: schedule,
         team_a_name: first,
         team_b_name: second,
+        auto_save_enabled: autoSaveOn,
+        drive_folder_id: folderId,
+        drive_webhook_url: webhookUrl,
       };
 
       created.push({
@@ -96,10 +112,9 @@ export async function POST(req: NextRequest) {
           series_state: initialSeries,
         },
         banpick_state: null,
-        auto_save_enabled:
-          item.auto_save_enabled !== undefined ? item.auto_save_enabled : true,
-        drive_folder_id: item.drive_folder_id?.trim() || undefined,
-        drive_webhook_url: item.drive_webhook_url?.trim() || undefined,
+        auto_save_enabled: autoSaveOn,
+        drive_folder_id: folderId,
+        drive_webhook_url: webhookUrl,
         series_state: initialSeries,
         created_at: nowIso,
       });

@@ -149,6 +149,13 @@ export function getSeriesState(match?: MatchState | null): SeriesState {
     idx % 2 === 0 ? teamA : teamB
   );
 
+  const resolvedAutoSave =
+    typeof match?.auto_save_enabled === 'boolean'
+      ? match.auto_save_enabled
+      : typeof raw?.auto_save_enabled === 'boolean'
+        ? raw.auto_save_enabled
+        : false;
+
   return {
     total_games: totalGames,
     current_game: currentGame,
@@ -168,7 +175,28 @@ export function getSeriesState(match?: MatchState | null): SeriesState {
     set_winners: Array.isArray(raw?.set_winners) ? raw.set_winners : [],
     team_a_name: teamA,
     team_b_name: teamB,
+    auto_save_enabled: resolvedAutoSave,
+    drive_folder_id: match?.drive_folder_id ?? raw?.drive_folder_id,
+    drive_webhook_url: match?.drive_webhook_url ?? raw?.drive_webhook_url,
   };
+}
+
+/**
+ * 경기의 자동 저장(auto_save_enabled)이 활성화되어 있는지 정확히 판별합니다.
+ * (Supabase 최소 스키마 환경에서도 rofs_submissions.series_state.auto_save_enabled 값을 우선 확인)
+ */
+export function isMatchAutoSaveEnabled(match?: MatchState | null): boolean {
+  if (!match) return false;
+  const seriesAuto =
+    match.rofs_submissions?.series_state?.auto_save_enabled ??
+    match.series_state?.auto_save_enabled;
+  if (typeof match.auto_save_enabled === 'boolean') {
+    return match.auto_save_enabled;
+  }
+  if (typeof seriesAuto === 'boolean') {
+    return seriesAuto;
+  }
+  return false;
 }
 
 /**
@@ -278,11 +306,22 @@ export function transitionBanPickState(
 ): TransitionResult<MatchState> {
   // 0. 자동 저장 ON/OFF 토글 액션
   if (action.type === 'TOGGLE_AUTO_SAVE') {
+    const currentSeries = getSeriesState(state);
+    const updatedSeries: SeriesState = {
+      ...currentSeries,
+      auto_save_enabled: action.enabled,
+    };
     return {
       ok: true,
       state: {
         ...state,
         auto_save_enabled: action.enabled,
+        series_state: updatedSeries,
+        rofs_submissions: {
+          first_choice: state.rofs_submissions?.first_choice ?? null,
+          second_choice: state.rofs_submissions?.second_choice ?? null,
+          series_state: updatedSeries,
+        },
       },
     };
   }

@@ -8,6 +8,7 @@ import { BanPickAction, MatchState, RofsAction } from '../../../types/match';
 import { transitionRofsState } from '../../../lib/rofsMachine';
 import {
   getSeriesState,
+  isMatchAutoSaveEnabled,
   transitionBanPickState,
 } from '../../../lib/banpickMachine';
 import { resolveRoleFromKey } from '../../../lib/roleToken';
@@ -59,9 +60,30 @@ const STATUS_PRIORITY: Record<MatchState['status'], number> = {
  */
 function mergeIncomingMatchState(
   prev: MatchState,
-  incoming: MatchState,
+  incomingRaw: MatchState,
   source: 'broadcast' | 'db' | 'init'
 ): MatchState {
+  const resolvedAutoSave =
+    typeof incomingRaw.auto_save_enabled === 'boolean'
+      ? incomingRaw.auto_save_enabled
+      : typeof incomingRaw.rofs_submissions?.series_state?.auto_save_enabled ===
+          'boolean'
+        ? incomingRaw.rofs_submissions.series_state.auto_save_enabled
+        : isMatchAutoSaveEnabled(prev);
+
+  const incoming: MatchState = {
+    ...incomingRaw,
+    auto_save_enabled: resolvedAutoSave,
+    drive_folder_id:
+      incomingRaw.drive_folder_id ??
+      incomingRaw.rofs_submissions?.series_state?.drive_folder_id ??
+      prev.drive_folder_id,
+    drive_webhook_url:
+      incomingRaw.drive_webhook_url ??
+      incomingRaw.rofs_submissions?.series_state?.drive_webhook_url ??
+      prev.drive_webhook_url,
+  };
+
   const prevGame = getSeriesState(prev).current_game;
   const nextGame = getSeriesState(incoming).current_game;
 
@@ -167,6 +189,7 @@ function MatchRoomContent() {
       second_choice: null,
     },
     banpick_state: null,
+    auto_save_enabled: false,
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -526,12 +549,12 @@ function MatchRoomContent() {
           </span>
           <span
             className={`px-3 py-1 rounded font-bold border ${
-              match.auto_save_enabled !== false
+              isMatchAutoSaveEnabled(match)
                 ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
                 : 'bg-slate-800/80 text-slate-400 border-slate-700'
             }`}
           >
-            결과 자동 저장: {match.auto_save_enabled !== false ? 'ON' : 'OFF'}
+            결과 자동 저장: {isMatchAutoSaveEnabled(match) ? 'ON' : 'OFF'}
           </span>
         </div>
       </div>

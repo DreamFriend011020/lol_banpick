@@ -70,6 +70,7 @@ export default function HomePage() {
           fearless_enabled: scrimFearless,
           auto_save_enabled: scrimAutoSave,
           drive_folder_id: scrimDriveFolder.trim() || undefined,
+          is_scrim: true,
         }),
       });
 

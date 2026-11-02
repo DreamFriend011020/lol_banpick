@@ -156,6 +156,14 @@ export function getSeriesState(match?: MatchState | null): SeriesState {
         ? raw.auto_save_enabled
         : false;
 
+  const resolvedIsScrim =
+    typeof raw?.is_scrim === 'boolean'
+      ? raw.is_scrim
+      : Boolean(
+          match?.match_id?.startsWith('scrim-') ||
+            match?.tournament_name?.includes('스크림')
+        );
+
   return {
     total_games: totalGames,
     current_game: currentGame,
@@ -178,7 +186,17 @@ export function getSeriesState(match?: MatchState | null): SeriesState {
     auto_save_enabled: resolvedAutoSave,
     drive_folder_id: match?.drive_folder_id ?? raw?.drive_folder_id,
     drive_webhook_url: match?.drive_webhook_url ?? raw?.drive_webhook_url,
+    is_scrim: resolvedIsScrim,
   };
+}
+
+/**
+ * 스크림(연습) 모드에서 생성된 방인지 판별합니다.
+ * 스크림 방은 관리자 인증 없이도 참가자가 직접 세트 승패 및 하드 피어리스 다음 세트를 진행할 수 있습니다.
+ */
+export function isScrimMatchRoom(match?: MatchState | null): boolean {
+  if (!match) return false;
+  return Boolean(getSeriesState(match).is_scrim);
 }
 
 /**

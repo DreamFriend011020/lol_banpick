@@ -20,6 +20,7 @@ interface CreateMatchInput {
   total_games?: number;
   fearless_enabled?: boolean;
   game_first_teams?: string[];
+  is_scrim?: boolean;
 }
 
 function generateMatchId(index: number = 0): string {
@@ -84,6 +85,10 @@ export async function POST(req: NextRequest) {
       const autoSaveOn = Boolean(item.auto_save_enabled);
       const folderId = item.drive_folder_id?.trim() || undefined;
       const webhookUrl = item.drive_webhook_url?.trim() || undefined;
+      const isScrim =
+        typeof item.is_scrim === 'boolean'
+          ? item.is_scrim
+          : matchId.startsWith('scrim-');
 
       const initialSeries: SeriesState = {
         total_games: totalGames,
@@ -96,6 +101,7 @@ export async function POST(req: NextRequest) {
         auto_save_enabled: autoSaveOn,
         drive_folder_id: folderId,
         drive_webhook_url: webhookUrl,
+        is_scrim: isScrim,
       };
 
       created.push({

@@ -9,6 +9,7 @@ import { transitionRofsState } from '../../../lib/rofsMachine';
 import {
   getSeriesState,
   isMatchAutoSaveEnabled,
+  isScrimMatchRoom,
   transitionBanPickState,
 } from '../../../lib/banpickMachine';
 import { resolveRoleFromKey } from '../../../lib/roleToken';
@@ -538,15 +539,35 @@ function MatchRoomContent() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <span
-            className={`px-3 py-1 rounded font-bold border ${
-              seriesState.fearless_enabled
-                ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
-                : 'bg-slate-800/80 text-slate-400 border-slate-700'
-            }`}
-          >
-            🔥 하드 피어리스: {seriesState.fearless_enabled ? `ON (누적 금지 ${seriesState.fearless_used_champions.length}명)` : 'OFF'}
-          </span>
+          {isScrimMatchRoom(match) ? (
+            <button
+              type="button"
+              onClick={() =>
+                handleDispatchBanPick({
+                  type: 'TOGGLE_FEARLESS',
+                  enabled: !seriesState.fearless_enabled,
+                })
+              }
+              className={`px-3 py-1 rounded font-bold border transition-colors ${
+                seriesState.fearless_enabled
+                  ? 'bg-rose-500/20 text-rose-300 border-rose-500/40 hover:bg-rose-500/30'
+                  : 'bg-slate-800/80 text-slate-400 border-slate-700 hover:bg-slate-700'
+              }`}
+              title="스크림 모드에서는 관리자 없이 하드 피어리스 ON/OFF를 전환할 수 있습니다"
+            >
+              🔥 하드 피어리스: {seriesState.fearless_enabled ? `ON (누적 금지 ${seriesState.fearless_used_champions.length}명)` : 'OFF'}
+            </button>
+          ) : (
+            <span
+              className={`px-3 py-1 rounded font-bold border ${
+                seriesState.fearless_enabled
+                  ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                  : 'bg-slate-800/80 text-slate-400 border-slate-700'
+              }`}
+            >
+              🔥 하드 피어리스: {seriesState.fearless_enabled ? `ON (누적 금지 ${seriesState.fearless_used_champions.length}명)` : 'OFF'}
+            </span>
+          )}
           <span
             className={`px-3 py-1 rounded font-bold border ${
               isMatchAutoSaveEnabled(match)

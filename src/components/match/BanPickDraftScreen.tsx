@@ -15,6 +15,7 @@ import {
   getUnavailableChampionIds,
   isInSwapPhase,
   isMatchAutoSaveEnabled,
+  isScrimMatchRoom,
   resolveViewerSide,
   SWAP_DURATION_SECONDS,
   TOURNAMENT_DRAFT_SEQUENCE,
@@ -162,6 +163,8 @@ export default function BanPickDraftScreen({
 
   const bp = match.banpick_state;
   const seriesState = useMemo(() => getSeriesState(match), [match]);
+  const isScrimRoom = useMemo(() => isScrimMatchRoom(match), [match]);
+  const canControlNextGame = isScrimRoom || isAdminVerified;
   const fearlessIds = useMemo(() => getFearlessChampionIds(match), [match]);
   const blueFearlessPicks = useMemo(
     () => getTeamFearlessChampionIds(match, 'BLUE'),
@@ -1121,13 +1124,14 @@ export default function BanPickDraftScreen({
                   </button>
                 </div>
 
-                {/* 다전제 다음 세트(Game N+1) 패배팀 -> FIRST 자동 배정 및 시작 컨트롤 (관리자 전용) */}
-                {isAdminVerified ? (
+                {/* 다전제 다음 세트(Game N+1) 패배팀 -> FIRST 자동 배정 및 시작 컨트롤 (스크림 방은 관리자 없이 즉시 진행 가능, 공식 매치는 관리자 전용) */}
+                {canControlNextGame ? (
                   <div className="w-full max-w-lg mt-1 rounded-xl bg-slate-950/90 border border-amber-500/40 p-3 space-y-2.5 text-left">
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-extrabold text-amber-300">
-                        👑 [관리자 전용] {seriesState.current_game}세트 승패 확정
-                        (패배팀 → {seriesState.current_game + 1}세트 FIRST)
+                        {isScrimRoom
+                          ? `🎮 [스크림 다전제] ${seriesState.current_game}세트 결과 선택 (패배팀 → ${seriesState.current_game + 1}세트 FIRST)`
+                          : `👑 [관리자 전용] ${seriesState.current_game}세트 승패 확정 (패배팀 → ${seriesState.current_game + 1}세트 FIRST)`}
                       </span>
                       <button
                         type="button"

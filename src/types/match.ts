@@ -52,6 +52,7 @@ export interface SeriesState {
   auto_save_enabled?: boolean;       // 밴픽 종료 시 자동 저장 ON/OFF (Supabase JSONB 동기화용)
   drive_folder_id?: string;          // 지정 구글 드라이브 폴더 ID/링크
   drive_webhook_url?: string;        // 지정 구글 드라이브 웹앱 URL
+  is_scrim?: boolean;                // 스크림(연습) 방 여부 (true일 경우 관리자 없이도 다음 세트 및 피어리스 진행 가능)
 }
 
 /**

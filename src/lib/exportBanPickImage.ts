@@ -339,16 +339,29 @@ export async function renderBanPickResultToDataUrl(
 
 /**
  * 밴픽 결과 이미지를 생성하여
- * 1) 프로그램을 실행 중인 서버 로컬 폴더(saved_banpicks/)에 자동 저장하고,
- * 2) 운영진 브라우저에 PNG 파일로 즉시 다운로드합니다.
+ * 1) 설정된 구글 드라이브 폴더(GOOGLE_DRIVE_WEBHOOK_URL) 및 로컬 폴더(saved_banpicks/)에 자동 저장하고,
+ * 2) 옵션에 따라 브라우저에 PNG 파일로 즉시 다운로드합니다.
  */
 export async function saveBanPickScreenForStaff(
   match: MatchState,
   championMap: Map<string, ChampionInfo>,
-  options: { triggerBrowserDownload?: boolean } = {
+  options: {
+    triggerBrowserDownload?: boolean;
+    isManualRetry?: boolean;
+    customFolderId?: string;
+    customWebhookUrl?: string;
+  } = {
     triggerBrowserDownload: true,
+    isManualRetry: false,
   }
-): Promise<{ ok: boolean; fileName: string; savedPath?: string }> {
+): Promise<{
+  ok: boolean;
+  fileName: string;
+  savedPath?: string;
+  driveUploaded?: boolean;
+  driveUrl?: string;
+  driveError?: string;
+}> {
   const blueTeam = match.selected_side?.blue ?? match.team_first_name;
   const redTeam = match.selected_side?.red ?? match.team_second_name;
   const dateStr = new Date()
@@ -359,7 +372,7 @@ export async function saveBanPickScreenForStaff(
   const fileName = `banpick_${match.match_id}_${blueTeam}_vs_${redTeam}_${dateStr}.png`;
   const imageDataUrl = await renderBanPickResultToDataUrl(match, championMap);
 
-  // 1) 운영진 브라우저 자동 다운로드 실행
+  // 1) 브라우저 자동 다운로드 실행
   if (options.triggerBrowserDownload && typeof document !== 'undefined') {
     const link = document.createElement('a');
     link.href = imageDataUrl;
@@ -369,7 +382,7 @@ export async function saveBanPickScreenForStaff(
     document.body.removeChild(link);
   }
 
-  // 2) 프로그램을 실행 중인 서버 디스크(saved_banpicks/)에도 자동 파일 저장
+  // 2) 서버 API를 통해 지정된(또는 기본) 구글 드라이브 폴더 업로드 및 로컬 백업 저장
   try {
     const res = await fetch('/api/match/save-capture', {
       method: 'POST',
@@ -379,6 +392,9 @@ export async function saveBanPickScreenForStaff(
         fileName,
         imageDataUrl,
         matchState: match,
+        isManualRetry: Boolean(options.isManualRetry),
+        customFolderId: options.customFolderId,
+        customWebhookUrl: options.customWebhookUrl,
       }),
     });
     const data = await res.json();
@@ -386,6 +402,9 @@ export async function saveBanPickScreenForStaff(
       ok: Boolean(data?.ok),
       fileName,
       savedPath: data?.savedPath,
+      driveUploaded: Boolean(data?.driveUploaded),
+      driveUrl: data?.driveUrl,
+      driveError: data?.driveError,
     };
   } catch {
     return {

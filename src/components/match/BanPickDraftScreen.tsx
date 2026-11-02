@@ -58,6 +58,9 @@ export default function BanPickDraftScreen({
   );
   const [savedNotice, setSavedNotice] = useState<string | null>(null);
   const [isExportingImage, setIsExportingImage] = useState<boolean>(false);
+  const [customDriveFolderInput, setCustomDriveFolderInput] = useState<string>(
+    match.drive_folder_id ?? ''
+  );
 
   // 60초 라인 스왑 페이즈에서 첫 번째로 클릭한 슬롯 인덱스 (0~4)
   const [selectedSwapSlot, setSelectedSwapSlot] = useState<number | null>(null);
@@ -135,7 +138,9 @@ export default function BanPickDraftScreen({
     setSelectedSwapSlot(null);
   }, [bp?.current_turn_index, viewerSide]);
 
-  // 밴픽 최종 종료('COMPLETED') 시 운영진용 밴픽 결과 화면(PNG + JSON) 자동 저장
+  const isAutoSaveOn = match.auto_save_enabled !== false;
+
+  // 밴픽 최종 종료('COMPLETED') 시 자동 저장 ON 상태일 때만 지정된 구글 드라이브 폴더 및 운영진 화면에 자동 저장
   useEffect(() => {
     if (
       match.status !== 'COMPLETED' ||
@@ -147,22 +152,37 @@ export default function BanPickDraftScreen({
     }
 
     autoSavedRef.current = true;
+
+    if (!isAutoSaveOn) {
+      setSavedNotice(
+        '자동 저장이 OFF 상태입니다. 필요 시 우측 버튼을 눌러 수동 저장하세요.'
+      );
+      return;
+    }
+
     setIsExportingImage(true);
 
     saveBanPickScreenForStaff(match, championMap, {
-      triggerBrowserDownload: true,
+      triggerBrowserDownload: viewerRole === 'OBSERVER',
+      isManualRetry: false,
     })
       .then((res) => {
         if (res.ok) {
-          setSavedNotice(
-            `운영진용 최종 밴픽 결과 화면이 자동 저장되었습니다: ${res.fileName} (saved_banpicks 폴더 및 브라우저 다운로드)`
-          );
+          if (res.driveUploaded) {
+            setSavedNotice(
+              `지정된 구글 드라이브 폴더에 밴픽 결과 사진(${res.fileName})이 자동 저장되었습니다!`
+            );
+          } else {
+            setSavedNotice(
+              `밴픽 결과 사진(${res.fileName})이 자동 생성되었습니다.`
+            );
+          }
         }
       })
       .finally(() => {
         setIsExportingImage(false);
       });
-  }, [match, isLoadingChamps, championMap]);
+  }, [match, isLoadingChamps, championMap, viewerRole, isAutoSaveOn]);
 
   const handleManualExport = async () => {
     if (isExportingImage || championMap.size === 0) return;
@@ -170,9 +190,15 @@ export default function BanPickDraftScreen({
     try {
       const res = await saveBanPickScreenForStaff(match, championMap, {
         triggerBrowserDownload: true,
+        isManualRetry: true,
+        customFolderId: customDriveFolderInput.trim() || undefined,
       });
       if (res.ok) {
-        setSavedNotice(`밴픽 결과 화면이 저장되었습니다: ${res.fileName}`);
+        setSavedNotice(
+          res.driveUploaded
+            ? `지정된 구글 드라이브 및 내 PC에 저장 완료: ${res.fileName}`
+            : `내 PC에 밴픽 결과 이미지 저장 완료: ${res.fileName}`
+        );
       }
     } finally {
       setIsExportingImage(false);
@@ -814,25 +840,32 @@ export default function BanPickDraftScreen({
             )}
 
             {match.status === 'COMPLETED' && (
-              <div className="mt-2 flex flex-col items-center gap-2">
+              <div className="mt-2 flex flex-col items-center gap-2 w-full">
                 <div className="px-4 py-1.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-sm font-bold">
                   모든 밴픽과 라인 배치가 완료되었습니다! 인게임 세트를 시작하세요.
                 </div>
-                <div className="flex flex-wrap items-center justify-center gap-2">
-                  {savedNotice && (
-                    <span className="text-xs text-amber-300 font-medium">
-                      ✓ {savedNotice}
-                    </span>
-                  )}
+                {savedNotice && (
+                  <span className="text-xs text-amber-300 font-medium text-center">
+                    ✓ {savedNotice}
+                  </span>
+                )}
+                <div className="flex flex-wrap items-center justify-center gap-2 w-full max-w-md mt-1">
+                  <input
+                    type="text"
+                    value={customDriveFolderInput}
+                    onChange={(e) => setCustomDriveFolderInput(e.target.value)}
+                    placeholder="다른 구글 드라이브 폴더 링크/ID (비우면 기본 폴더)"
+                    className="flex-1 min-w-[200px] rounded-lg bg-slate-950 border border-slate-700 px-2.5 py-1 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
+                  />
                   <button
                     type="button"
                     onClick={handleManualExport}
                     disabled={isExportingImage}
-                    className="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 text-xs font-bold text-slate-200 transition-colors disabled:opacity-50"
+                    className="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 text-xs font-bold text-slate-200 transition-colors disabled:opacity-50 whitespace-nowrap"
                   >
                     {isExportingImage
-                      ? '이미지 생성 중...'
-                      : '밴픽 결과 이미지(PNG) 다시 저장'}
+                      ? '이미지 저장 중...'
+                      : '구글 드라이브 & 내 PC 저장'}
                   </button>
                 </div>
               </div>

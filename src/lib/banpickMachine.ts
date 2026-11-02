@@ -176,6 +176,17 @@ export function transitionBanPickState(
   state: MatchState,
   action: BanPickAction
 ): TransitionResult<MatchState> {
+  // 0. 자동 저장 ON/OFF 토글 액션
+  if (action.type === 'TOGGLE_AUTO_SAVE') {
+    return {
+      ok: true,
+      state: {
+        ...state,
+        auto_save_enabled: action.enabled,
+      },
+    };
+  }
+
   // 1. 밴픽 시작 액션 ('BANPICK_READY' -> 'BANPICK_IN_PROGRESS')
   if (action.type === 'START_BANPICK') {
     if (state.status !== 'BANPICK_READY' && state.status !== 'BANPICK_IN_PROGRESS') {

@@ -10,6 +10,7 @@ interface CsvRowPreview {
   team_first_name: string;
   team_second_name: string;
   match_id?: string;
+  auto_save_enabled?: boolean;
 }
 
 const ADMIN_AUTH_STORAGE_KEY = 'lol_banpick_admin_authenticated';
@@ -36,6 +37,9 @@ export default function AdminPage() {
   const [firstTeamName, setFirstTeamName] = useState('');
   const [secondTeamName, setSecondTeamName] = useState('');
   const [customMatchId, setCustomMatchId] = useState('');
+  const [autoSaveEnabled, setAutoSaveEnabled] = useState<boolean>(true);
+  const [driveFolderId, setDriveFolderId] = useState<string>('');
+  const [driveWebhookUrl, setDriveWebhookUrl] = useState<string>('');
 
   // CSV 일괄 업로드 상태
   const [csvText, setCsvText] = useState('');
@@ -125,6 +129,9 @@ export default function AdminPage() {
           team_first_name: firstTeamName.trim(),
           team_second_name: secondTeamName.trim(),
           match_id: customMatchId.trim() || undefined,
+          auto_save_enabled: autoSaveEnabled,
+          drive_folder_id: driveFolderId.trim() || undefined,
+          drive_webhook_url: driveWebhookUrl.trim() || undefined,
         }),
       });
       const data = await res.json();
@@ -176,6 +183,7 @@ export default function AdminPage() {
           team_first_name: cols[2],
           team_second_name: cols[3],
           match_id: cols[4] || undefined,
+          auto_save_enabled: autoSaveEnabled,
         });
       } else if (cols.length === 2) {
         rows.push({
@@ -183,6 +191,7 @@ export default function AdminPage() {
           round_name: `Match ${idx + 1}`,
           team_first_name: cols[0],
           team_second_name: cols[1],
+          auto_save_enabled: autoSaveEnabled,
         });
       }
     });
@@ -221,10 +230,14 @@ export default function AdminPage() {
     setIsSubmitting(true);
 
     try {
+      const payload = csvPreview.map((r) => ({
+        ...r,
+        auto_save_enabled: autoSaveEnabled,
+      }));
       const res = await fetch('/api/matches', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ matches: csvPreview }),
+        body: JSON.stringify({ matches: payload }),
       });
       const data = await res.json();
       if (!data.ok) {
@@ -281,6 +294,17 @@ export default function AdminPage() {
     } catch {
       // ignore
     }
+  };
+
+  // 특정 경기의 자동 저장 ON/OFF 토글
+  const handleToggleMatchAutoSave = async (m: MatchState) => {
+    const nextVal = m.auto_save_enabled === false ? true : false;
+    await fetch(`/api/matches/${encodeURIComponent(m.match_id)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ auto_save_enabled: nextVal }),
+    });
+    await fetchMatches();
   };
 
   const handleDeleteMatch = async (matchId: string) => {
@@ -484,6 +508,62 @@ export default function AdminPage() {
                 />
               </div>
 
+              {/* 밴픽 종료 시 자동 저장 ON/OFF 토글 및 저장할 드라이브 폴더 지정 */}
+              <div className="rounded-xl bg-slate-950 border border-slate-800 p-3.5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-xs font-bold text-slate-200">
+                      밴픽 종료 시 결과 사진 자동 저장 (구글 드라이브 / PC)
+                    </div>
+                    <div className="text-[11px] text-slate-400">
+                      {autoSaveEnabled
+                        ? 'ON: 밴픽이 완료되면 지정한 드라이브 폴더에 자동 저장됩니다.'
+                        : 'OFF: 자동 저장하지 않으며 수동 버튼으로만 저장합니다.'}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setAutoSaveEnabled((prev) => !prev)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-extrabold transition-colors ${
+                      autoSaveEnabled
+                        ? 'bg-emerald-500 text-slate-950'
+                        : 'bg-slate-800 text-slate-400 border border-slate-700'
+                    }`}
+                  >
+                    {autoSaveEnabled ? '자동 저장 ON' : '자동 저장 OFF'}
+                  </button>
+                </div>
+
+                {autoSaveEnabled && (
+                  <div className="pt-2 border-t border-slate-800/80 space-y-2.5">
+                    <div>
+                      <label className="block text-[11px] font-bold text-emerald-300 mb-1">
+                        저장할 구글 드라이브 폴더 링크 또는 ID (선택 — 대회/라운드별 다른 폴더 지정 가능)
+                      </label>
+                      <input
+                        type="text"
+                        value={driveFolderId}
+                        onChange={(e) => setDriveFolderId(e.target.value)}
+                        placeholder="예: https://drive.google.com/drive/folders/1A2B3C... (비워두면 기본 폴더)"
+                        className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-400"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-400 mb-1">
+                        다른 구글 계정 웹앱 URL (선택 — 아예 다른 계정의 드라이브로 보낼 때만 입력)
+                      </label>
+                      <input
+                        type="text"
+                        value={driveWebhookUrl}
+                        onChange={(e) => setDriveWebhookUrl(e.target.value)}
+                        placeholder="예: https://script.google.com/macros/s/.../exec (비워두면 기본 웹앱 사용)"
+                        className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-400"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <button
                 type="submit"
                 disabled={isSubmitting}
@@ -581,59 +661,76 @@ export default function AdminPage() {
                     <th className="py-3 px-3">FIRST 팀</th>
                     <th className="py-3 px-3">SECOND 팀</th>
                     <th className="py-3 px-3">진행 상태</th>
+                    <th className="py-3 px-3">자동 저장</th>
                     <th className="py-3 px-3">고유 링크 (/match/[match_id])</th>
                     <th className="py-3 px-3 text-right">관리</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/70">
-                  {matches.map((m) => (
-                    <tr key={m.match_id} className="hover:bg-slate-800/30">
-                      <td className="py-3 px-3">
-                        <div className="font-bold text-white">
-                          {m.tournament_name || '공식 토너먼트'}
-                        </div>
-                        <div className="text-xs text-slate-400">
-                          {m.round_name || '-'}
-                        </div>
-                      </td>
-                      <td className="py-3 px-3 font-extrabold text-amber-300">
-                        {m.team_first_name}
-                      </td>
-                      <td className="py-3 px-3 font-extrabold text-cyan-300">
-                        {m.team_second_name}
-                      </td>
-                      <td className="py-3 px-3">
-                        <span className="text-xs px-2.5 py-1 rounded-full bg-slate-800 border border-slate-700 text-slate-300 font-semibold">
-                          {m.status}
-                        </span>
-                      </td>
-                      <td className="py-3 px-3 font-mono text-xs text-slate-300">
-                        /match/{m.match_id}
-                      </td>
-                      <td className="py-3 px-3 text-right space-x-2">
-                        <button
-                          type="button"
-                          onClick={() => handleCopyLink(m.match_id)}
-                          className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-bold text-amber-300 border border-slate-700"
-                        >
-                          {copiedId === m.match_id ? '✓ 복사됨' : '링크 복사'}
-                        </button>
-                        <Link
-                          href={`/match/${encodeURIComponent(m.match_id)}`}
-                          className="inline-block px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-extrabold"
-                        >
-                          입장
-                        </Link>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteMatch(m.match_id)}
-                          className="px-2.5 py-1.5 rounded-lg bg-rose-950/60 hover:bg-rose-900/70 text-xs font-bold text-rose-300 border border-rose-800/50"
-                        >
-                          삭제
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {matches.map((m) => {
+                    const isAutoOn = m.auto_save_enabled !== false;
+                    return (
+                      <tr key={m.match_id} className="hover:bg-slate-800/30">
+                        <td className="py-3 px-3">
+                          <div className="font-bold text-white">
+                            {m.tournament_name || '공식 토너먼트'}
+                          </div>
+                          <div className="text-xs text-slate-400">
+                            {m.round_name || '-'}
+                          </div>
+                        </td>
+                        <td className="py-3 px-3 font-extrabold text-amber-300">
+                          {m.team_first_name}
+                        </td>
+                        <td className="py-3 px-3 font-extrabold text-cyan-300">
+                          {m.team_second_name}
+                        </td>
+                        <td className="py-3 px-3">
+                          <span className="text-xs px-2.5 py-1 rounded-full bg-slate-800 border border-slate-700 text-slate-300 font-semibold">
+                            {m.status}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3">
+                          <button
+                            type="button"
+                            onClick={() => handleToggleMatchAutoSave(m)}
+                            className={`text-xs px-2.5 py-1 rounded-lg font-extrabold transition-colors ${
+                              isAutoOn
+                                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/30'
+                                : 'bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-700'
+                            }`}
+                          >
+                            {isAutoOn ? 'ON' : 'OFF'}
+                          </button>
+                        </td>
+                        <td className="py-3 px-3 font-mono text-xs text-slate-300">
+                          /match/{m.match_id}
+                        </td>
+                        <td className="py-3 px-3 text-right space-x-2">
+                          <button
+                            type="button"
+                            onClick={() => handleCopyLink(m.match_id)}
+                            className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-bold text-amber-300 border border-slate-700"
+                          >
+                            {copiedId === m.match_id ? '✓ 복사됨' : '링크 복사'}
+                          </button>
+                          <Link
+                            href={`/match/${encodeURIComponent(m.match_id)}`}
+                            className="inline-block px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-extrabold"
+                          >
+                            입장
+                          </Link>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteMatch(m.match_id)}
+                            className="px-2.5 py-1.5 rounded-lg bg-rose-950/60 hover:bg-rose-900/70 text-xs font-bold text-rose-300 border border-rose-800/50"
+                          >
+                            삭제
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

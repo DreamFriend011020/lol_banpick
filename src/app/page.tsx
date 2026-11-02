@@ -13,6 +13,8 @@ export default function HomePage() {
   // 자유 스크림 방 즉시 생성 상태
   const [scrimFirstTeam, setScrimFirstTeam] = useState('');
   const [scrimSecondTeam, setScrimSecondTeam] = useState('');
+  const [scrimAutoSave, setScrimAutoSave] = useState<boolean>(false);
+  const [scrimDriveFolder, setScrimDriveFolder] = useState<string>('');
   const [isCreatingScrim, setIsCreatingScrim] = useState(false);
   const [scrimError, setScrimError] = useState<string | null>(null);
   const [createdScrimId, setCreatedScrimId] = useState<string | null>(null);
@@ -53,6 +55,8 @@ export default function HomePage() {
           round_name: '연습 경기',
           team_first_name: first,
           team_second_name: second,
+          auto_save_enabled: scrimAutoSave,
+          drive_folder_id: scrimDriveFolder.trim() || undefined,
         }),
       });
 
@@ -153,6 +157,48 @@ export default function HomePage() {
                     placeholder="예: 레드팀 또는 GEN"
                     className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-cyan-400"
                   />
+                </div>
+
+                {/* 밴픽 종료 시 자동 저장 ON/OFF 스위치 및 저장할 드라이브 폴더 지정 */}
+                <div className="rounded-xl bg-slate-950 border border-slate-800 p-3.5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-xs font-bold text-slate-200">
+                        밴픽 종료 시 결과 사진 자동 저장
+                      </div>
+                      <div className="text-[11px] text-slate-400">
+                        {scrimAutoSave
+                          ? 'ON: 종료 시 지정한 구글 드라이브/PC에 자동 저장됩니다.'
+                          : 'OFF: 연습용이므로 자동 저장하지 않습니다. (수동 저장은 가능)'}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setScrimAutoSave((prev) => !prev)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-extrabold transition-colors ${
+                        scrimAutoSave
+                          ? 'bg-emerald-500 text-slate-950'
+                          : 'bg-slate-800 text-slate-400 border border-slate-700'
+                      }`}
+                    >
+                      {scrimAutoSave ? '자동 저장 ON' : '자동 저장 OFF'}
+                    </button>
+                  </div>
+
+                  {scrimAutoSave && (
+                    <div className="pt-2 border-t border-slate-800/80">
+                      <label className="block text-[11px] font-bold text-emerald-300 mb-1">
+                        저장할 구글 드라이브 폴더 링크 또는 ID (선택 — 비워두면 기본 드라이브)
+                      </label>
+                      <input
+                        type="text"
+                        value={scrimDriveFolder}
+                        onChange={(e) => setScrimDriveFolder(e.target.value)}
+                        placeholder="예: https://drive.google.com/drive/folders/1A2B3C..."
+                        className="w-full rounded-lg bg-slate-900 border border-slate-700 px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-400"
+                      />
+                    </div>
+                  )}
                 </div>
 
                 {scrimError && (

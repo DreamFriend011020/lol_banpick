@@ -73,6 +73,18 @@ export async function PATCH(
         body.banpick_state !== undefined
           ? body.banpick_state
           : existing?.banpick_state ?? null,
+      auto_save_enabled:
+        body.auto_save_enabled !== undefined
+          ? body.auto_save_enabled
+          : existing?.auto_save_enabled ?? true,
+      drive_folder_id:
+        body.drive_folder_id !== undefined
+          ? body.drive_folder_id
+          : existing?.drive_folder_id,
+      drive_webhook_url:
+        body.drive_webhook_url !== undefined
+          ? body.drive_webhook_url
+          : existing?.drive_webhook_url,
       created_at: existing?.created_at ?? new Date().toISOString(),
     };
 

@@ -106,6 +106,9 @@ export interface MatchState {
   pick_turn: PickTurn | null;
   rofs_submissions?: RofsSubmissions | null;
   banpick_state?: BanPickState | null;
+  auto_save_enabled?: boolean;  // 밴픽 종료 시 자동 저장 활성화 여부
+  drive_folder_id?: string;     // 이 경기를 저장할 특정 구글 드라이브 폴더 링크 또는 ID (미지정 시 기본 폴더)
+  drive_webhook_url?: string;   // 다른 구글 계정의 드라이브 웹앱 URL (선택)
   created_at?: string;
 }
 
@@ -162,6 +165,10 @@ export type BanPickAction =
     }
   | {
       type: 'FINISH_SWAP_PHASE';
+    }
+  | {
+      type: 'TOGGLE_AUTO_SAVE';
+      enabled: boolean;
     };
 
 /**

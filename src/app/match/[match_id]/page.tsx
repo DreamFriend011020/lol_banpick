@@ -487,6 +487,23 @@ function MatchRoomContent() {
         <div className="flex items-center gap-2">
           <button
             type="button"
+            onClick={() =>
+              handleDispatchBanPick({
+                type: 'TOGGLE_AUTO_SAVE',
+                enabled: match.auto_save_enabled === false ? true : false,
+              })
+            }
+            className={`px-3 py-1 rounded font-bold border transition-colors ${
+              match.auto_save_enabled !== false
+                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/30'
+                : 'bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700'
+            }`}
+          >
+            결과 자동 저장: {match.auto_save_enabled !== false ? 'ON' : 'OFF'}
+          </button>
+
+          <button
+            type="button"
             onClick={() => {
               setModalTeamInput('');
               setIsRoleModalOpen(true);

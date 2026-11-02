@@ -12,6 +12,9 @@ interface CreateMatchInput {
   round_name?: string;
   team_first_name: string;
   team_second_name: string;
+  auto_save_enabled?: boolean;
+  drive_folder_id?: string;
+  drive_webhook_url?: string;
 }
 
 function generateMatchId(index: number = 0): string {
@@ -68,6 +71,10 @@ export async function POST(req: NextRequest) {
           second_choice: null,
         },
         banpick_state: null,
+        auto_save_enabled:
+          item.auto_save_enabled !== undefined ? item.auto_save_enabled : true,
+        drive_folder_id: item.drive_folder_id?.trim() || undefined,
+        drive_webhook_url: item.drive_webhook_url?.trim() || undefined,
         created_at: nowIso,
       });
     });

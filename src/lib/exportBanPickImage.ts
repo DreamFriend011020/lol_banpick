@@ -1,0 +1,397 @@
+import { ChampionInfo, MatchState } from '../types/match';
+
+const POSITION_LABELS = ['TOP', 'JGL', 'MID', 'BOT', 'SUP'];
+
+/**
+ * 외부 이미지(Data Dragon 초상화)를 CORS 허용 모드로 로드합니다.
+ */
+function loadImage(url: string): Promise<HTMLImageElement | null> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = url;
+  });
+}
+
+/**
+ * 둥근 사각형 패스 헬퍼
+ */
+function roundRectPath(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number
+) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+/**
+ * 완료된 밴픽 상태(MatchState)를 1920x1080 고해상도 PNG Data URL로 렌더링합니다.
+ */
+export async function renderBanPickResultToDataUrl(
+  match: MatchState,
+  championMap: Map<string, ChampionInfo>
+): Promise<string> {
+  const width = 1920;
+  const height = 1080;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    throw new Error('Canvas 2D context를 생성할 수 없습니다.');
+  }
+
+  const bp = match.banpick_state;
+  const blueTeam = match.selected_side?.blue ?? match.team_first_name;
+  const redTeam = match.selected_side?.red ?? match.team_second_name;
+  const isBlueFirstPick = match.pick_turn?.first_pick === blueTeam;
+
+  // 1. 배경 그라데이션
+  const bgGrad = ctx.createLinearGradient(0, 0, width, height);
+  bgGrad.addColorStop(0, '#020617');
+  bgGrad.addColorStop(0.5, '#0f172a');
+  bgGrad.addColorStop(1, '#020617');
+  ctx.fillStyle = bgGrad;
+  ctx.fillRect(0, 0, width, height);
+
+  // 상단 타이틀 바
+  roundRectPath(ctx, 60, 40, width - 120, 140, 20);
+  ctx.fillStyle = '#0f172a';
+  ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = '#1e293b';
+  ctx.stroke();
+
+  // 블루 진영 헤더 (좌)
+  ctx.fillStyle = '#2563eb';
+  roundRectPath(ctx, 90, 65, 130, 34, 8);
+  ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 16px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('BLUE SIDE', 155, 88);
+
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 38px sans-serif';
+  ctx.fillText(blueTeam, 240, 96);
+
+  ctx.fillStyle = isBlueFirstPick ? '#fbbf24' : '#94a3b8';
+  ctx.font = 'bold 18px sans-serif';
+  ctx.fillText(
+    isBlueFirstPick ? '선픽 (FIRST PICK)' : '후픽 (LAST PICK)',
+    90,
+    145
+  );
+
+  // 중앙 매치 정보
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#f59e0b';
+  ctx.font = 'bold 18px sans-serif';
+  ctx.fillText('OFFICIAL TOURNAMENT DRAFT RESULT', width / 2, 82);
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 28px sans-serif';
+  ctx.fillText(`MATCH: ${match.match_id}`, width / 2, 120);
+
+  ctx.fillStyle = '#64748b';
+  ctx.font = '15px sans-serif';
+  ctx.fillText(new Date().toLocaleString('ko-KR'), width / 2, 152);
+
+  // 레드 진영 헤더 (우)
+  ctx.fillStyle = '#e11d48';
+  roundRectPath(ctx, width - 220, 65, 130, 34, 8);
+  ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 16px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('RED SIDE', width - 155, 88);
+
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 38px sans-serif';
+  ctx.fillText(redTeam, width - 240, 96);
+
+  ctx.fillStyle = !isBlueFirstPick ? '#fbbf24' : '#94a3b8';
+  ctx.font = 'bold 18px sans-serif';
+  ctx.fillText(
+    !isBlueFirstPick ? '선픽 (FIRST PICK)' : '후픽 (LAST PICK)',
+    width - 90,
+    145
+  );
+
+  // 2. 밴(BANS) 섹션 렌더링 (좌: 블루 5밴 / 우: 레드 5밴)
+  const blueBans = bp?.blue_bans ?? [null, null, null, null, null];
+  const redBans = bp?.red_bans ?? [null, null, null, null, null];
+
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#93c5fd';
+  ctx.font = 'bold 18px sans-serif';
+  ctx.fillText('BLUE BANS (5)', 70, 225);
+
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#fda4af';
+  ctx.font = 'bold 18px sans-serif';
+  ctx.fillText('RED BANS (5)', width - 70, 225);
+
+  // 블루 5밴 그리기
+  for (let i = 0; i < 5; i++) {
+    const champId = blueBans[i];
+    const champ =
+      champId && champId !== 'NO_BAN' ? championMap.get(champId) : null;
+    const x = 70 + i * 118 + (i >= 3 ? 20 : 0);
+    const y = 240;
+
+    roundRectPath(ctx, x, y, 104, 104, 12);
+    ctx.fillStyle = '#0f172a';
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#1e3a8a';
+    ctx.stroke();
+
+    if (champ) {
+      const img = await loadImage(champ.imageUrl);
+      if (img) {
+        ctx.save();
+        roundRectPath(ctx, x + 2, y + 2, 100, 100, 10);
+        ctx.clip();
+        ctx.filter = 'grayscale(70%)';
+        ctx.drawImage(img, x + 2, y + 2, 100, 100);
+        ctx.restore();
+      }
+      // 밴 대각선 표시
+      ctx.strokeStyle = '#ef4444';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(x + 14, y + 14);
+      ctx.lineTo(x + 90, y + 90);
+      ctx.stroke();
+    }
+
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#cbd5e1';
+    ctx.font = 'bold 14px sans-serif';
+    ctx.fillText(
+      champ ? champ.name : champId === 'NO_BAN' ? '노밴' : `밴 ${i + 1}`,
+      x + 52,
+      y + 126
+    );
+  }
+
+  // 레드 5밴 그리기
+  for (let i = 0; i < 5; i++) {
+    const champId = redBans[i];
+    const champ =
+      champId && champId !== 'NO_BAN' ? championMap.get(champId) : null;
+    const x = width - 70 - 104 - i * 118 - (i >= 3 ? 20 : 0);
+    const y = 240;
+
+    roundRectPath(ctx, x, y, 104, 104, 12);
+    ctx.fillStyle = '#0f172a';
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#881337';
+    ctx.stroke();
+
+    if (champ) {
+      const img = await loadImage(champ.imageUrl);
+      if (img) {
+        ctx.save();
+        roundRectPath(ctx, x + 2, y + 2, 100, 100, 10);
+        ctx.clip();
+        ctx.filter = 'grayscale(70%)';
+        ctx.drawImage(img, x + 2, y + 2, 100, 100);
+        ctx.restore();
+      }
+      ctx.strokeStyle = '#ef4444';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(x + 14, y + 14);
+      ctx.lineTo(x + 90, y + 90);
+      ctx.stroke();
+    }
+
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#cbd5e1';
+    ctx.font = 'bold 14px sans-serif';
+    ctx.fillText(
+      champ ? champ.name : champId === 'NO_BAN' ? '노밴' : `밴 ${i + 1}`,
+      x + 52,
+      y + 126
+    );
+  }
+
+  // 3. 5:5 픽(PICKS) 섹션 렌더링
+  const bluePicks = bp?.blue_picks ?? [null, null, null, null, null];
+  const redPicks = bp?.red_picks ?? [null, null, null, null, null];
+
+  const startY = 400;
+  const rowHeight = 122;
+  const cardWidth = 840;
+
+  for (let i = 0; i < 5; i++) {
+    const y = startY + i * rowHeight;
+
+    // --- 좌측: 블루 픽 슬롯 ---
+    const bChampId = bluePicks[i];
+    const bChamp = bChampId ? championMap.get(bChampId) : null;
+    const bx = 60;
+
+    roundRectPath(ctx, bx, y, cardWidth, 106, 16);
+    ctx.fillStyle = '#0f172a';
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#1d4ed8';
+    ctx.stroke();
+
+    if (bChamp) {
+      const img = await loadImage(bChamp.imageUrl);
+      if (img) {
+        ctx.save();
+        roundRectPath(ctx, bx + 12, y + 11, 84, 84, 12);
+        ctx.clip();
+        ctx.drawImage(img, bx + 12, y + 11, 84, 84);
+        ctx.restore();
+      }
+    }
+
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#60a5fa';
+    ctx.font = 'bold 15px sans-serif';
+    ctx.fillText(`BLUE ${i + 1}픽 · ${POSITION_LABELS[i]}`, bx + 116, y + 38);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 28px sans-serif';
+    ctx.fillText(bChamp ? bChamp.name : '미선택', bx + 116, y + 72);
+
+    if (bChamp) {
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '15px sans-serif';
+      ctx.fillText(bChamp.title, bx + 116, y + 95);
+    }
+
+    // --- 우측: 레드 픽 슬롯 ---
+    const rChampId = redPicks[i];
+    const rChamp = rChampId ? championMap.get(rChampId) : null;
+    const rx = width - 60 - cardWidth;
+
+    roundRectPath(ctx, rx, y, cardWidth, 106, 16);
+    ctx.fillStyle = '#0f172a';
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#be123c';
+    ctx.stroke();
+
+    if (rChamp) {
+      const img = await loadImage(rChamp.imageUrl);
+      if (img) {
+        ctx.save();
+        roundRectPath(ctx, rx + cardWidth - 96, y + 11, 84, 84, 12);
+        ctx.clip();
+        ctx.drawImage(img, rx + cardWidth - 96, y + 11, 84, 84);
+        ctx.restore();
+      }
+    }
+
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#fb7185';
+    ctx.font = 'bold 15px sans-serif';
+    ctx.fillText(
+      `RED ${i + 1}픽 · ${POSITION_LABELS[i]}`,
+      rx + cardWidth - 116,
+      y + 38
+    );
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 28px sans-serif';
+    ctx.fillText(
+      rChamp ? rChamp.name : '미선택',
+      rx + cardWidth - 116,
+      y + 72
+    );
+
+    if (rChamp) {
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '15px sans-serif';
+      ctx.fillText(rChamp.title, rx + cardWidth - 116, y + 95);
+    }
+  }
+
+  return canvas.toDataURL('image/png');
+}
+
+/**
+ * 밴픽 결과 이미지를 생성하여
+ * 1) 프로그램을 실행 중인 서버 로컬 폴더(saved_banpicks/)에 자동 저장하고,
+ * 2) 운영진 브라우저에 PNG 파일로 즉시 다운로드합니다.
+ */
+export async function saveBanPickScreenForStaff(
+  match: MatchState,
+  championMap: Map<string, ChampionInfo>,
+  options: { triggerBrowserDownload?: boolean } = {
+    triggerBrowserDownload: true,
+  }
+): Promise<{ ok: boolean; fileName: string; savedPath?: string }> {
+  const blueTeam = match.selected_side?.blue ?? match.team_first_name;
+  const redTeam = match.selected_side?.red ?? match.team_second_name;
+  const dateStr = new Date()
+    .toISOString()
+    .replace(/[:.]/g, '-')
+    .slice(0, 19);
+
+  const fileName = `banpick_${match.match_id}_${blueTeam}_vs_${redTeam}_${dateStr}.png`;
+  const imageDataUrl = await renderBanPickResultToDataUrl(match, championMap);
+
+  // 1) 운영진 브라우저 자동 다운로드 실행
+  if (options.triggerBrowserDownload && typeof document !== 'undefined') {
+    const link = document.createElement('a');
+    link.href = imageDataUrl;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+
+  // 2) 프로그램을 실행 중인 서버 디스크(saved_banpicks/)에도 자동 파일 저장
+  try {
+    const res = await fetch('/api/match/save-capture', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        matchId: match.match_id,
+        fileName,
+        imageDataUrl,
+        matchState: match,
+      }),
+    });
+    const data = await res.json();
+    return {
+      ok: Boolean(data?.ok),
+      fileName,
+      savedPath: data?.savedPath,
+    };
+  } catch {
+    return {
+      ok: true,
+      fileName,
+    };
+  }
+}
+

@@ -41,7 +41,9 @@ export async function PATCH(
 ) {
   try {
     const matchId = params.match_id;
-    const body = (await req.json()) as Partial<MatchState>;
+    const body = (await req.json()) as Partial<MatchState> & {
+      skipSupabase?: boolean;
+    };
     const existing = await getMatchByIdFromStore(matchId);
 
     const updated: MatchState = {
@@ -90,7 +92,7 @@ export async function PATCH(
 
     await upsertMatchesToStore([updated]).catch(() => {});
 
-    if (supabase) {
+    if (supabase && !body.skipSupabase) {
       await supabase
         .from('matches')
         .upsert(updated, { onConflict: 'match_id' });

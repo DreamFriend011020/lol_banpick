@@ -43,6 +43,95 @@ function loadRoleSession(matchId: string): StoredSession | null {
   }
 }
 
+const STATUS_PRIORITY: Record<MatchState['status'], number> = {
+  ROFS_FIRST_PICK: 0,
+  ROFS_SECOND_PICK: 1,
+  BANPICK_READY: 2,
+  BANPICK_IN_PROGRESS: 3,
+  COMPLETED: 4,
+};
+
+/**
+ * 실시간 브로드캐스트와 DB(postgres_changes) 이벤트가 시간차로 중복 도착할 때
+ * 이전 턴으로 롤백되거나 동일 턴의 타이머(turn_deadline_at) 및 프리뷰(hover)가 덮어씌워지는 현상을 방지합니다.
+ */
+function mergeIncomingMatchState(
+  prev: MatchState,
+  incoming: MatchState,
+  source: 'broadcast' | 'db' | 'init'
+): MatchState {
+  if (source === 'init') {
+    const prevRank = STATUS_PRIORITY[prev.status] ?? 0;
+    const nextRank = STATUS_PRIORITY[incoming.status] ?? 0;
+    if (prevRank > nextRank) return prev;
+    if (
+      prev.status === 'BANPICK_IN_PROGRESS' &&
+      incoming.status === 'BANPICK_IN_PROGRESS' &&
+      prev.banpick_state &&
+      incoming.banpick_state &&
+      prev.banpick_state.current_turn_index >
+        incoming.banpick_state.current_turn_index
+    ) {
+      return prev;
+    }
+    return incoming;
+  }
+
+  const prevRank = STATUS_PRIORITY[prev.status] ?? 0;
+  const nextRank = STATUS_PRIORITY[incoming.status] ?? 0;
+
+  // 이미 더 진행된 단계(예: COMPLETED -> BANPICK_IN_PROGRESS)로 역행하는 지연 패킷 무시
+  if (nextRank < prevRank) {
+    return prev;
+  }
+
+  // 밴픽 진행 중일 때 턴 인덱스 및 타이머 중복 보호
+  if (
+    prev.status === 'BANPICK_IN_PROGRESS' &&
+    incoming.status === 'BANPICK_IN_PROGRESS' &&
+    prev.banpick_state &&
+    incoming.banpick_state
+  ) {
+    const prevTurn = prev.banpick_state.current_turn_index;
+    const nextTurn = incoming.banpick_state.current_turn_index;
+
+    // 이미 지나간 턴의 지연 패킷은 무시
+    if (nextTurn < prevTurn) {
+      return prev;
+    }
+
+    // 동일한 턴(0~19)에 대한 패킷이 중복 도착한 경우:
+    // - 처음 설정된 turn_deadline_at을 유지하여 타이머가 다시 30초로 튀거나 흔들리지 않게 고정
+    // - DB(postgres_changes) 지연 패킷이 현재 프리뷰(hovered_champion_id)를 지우지 않도록 보호
+    if (nextTurn === prevTurn && nextTurn < 20) {
+      return {
+        ...incoming,
+        banpick_state: {
+          ...incoming.banpick_state,
+          turn_deadline_at: prev.banpick_state.turn_deadline_at,
+          hovered_champion_id:
+            source === 'db'
+              ? prev.banpick_state.hovered_champion_id
+              : incoming.banpick_state.hovered_champion_id,
+        },
+      };
+    }
+
+    // 동일한 60초 라인 스왑 페이즈(turn 20) 중일 때: 타이머 마감 시각 고정
+    if (nextTurn === prevTurn && nextTurn >= 20) {
+      return {
+        ...incoming,
+        banpick_state: {
+          ...incoming.banpick_state,
+          turn_deadline_at: prev.banpick_state.turn_deadline_at,
+        },
+      };
+    }
+  }
+
+  return incoming;
+}
+
 function MatchRoomContent() {
   const params = useParams<{ match_id: string }>();
   const searchParams = useSearchParams();
@@ -115,7 +204,9 @@ function MatchRoomContent() {
         if (res.ok) {
           const data = await res.json();
           if (data?.ok && data.match && isMounted) {
-            setMatch(data.match as MatchState);
+            setMatch((prev) =>
+              mergeIncomingMatchState(prev, data.match as MatchState, 'init')
+            );
           }
         }
       } catch {
@@ -132,7 +223,13 @@ function MatchRoomContent() {
       const bc = new BroadcastChannel(`lol_banpick_room_${matchId}`);
       bc.onmessage = (event) => {
         if (event.data?.state) {
-          setMatch(event.data.state as MatchState);
+          setMatch((prev) =>
+            mergeIncomingMatchState(
+              prev,
+              event.data.state as MatchState,
+              'broadcast'
+            )
+          );
           setErrorMessage(null);
         }
       };
@@ -157,7 +254,9 @@ function MatchRoomContent() {
         .single();
 
       if (!error && data && isMounted) {
-        setMatch(data as MatchState);
+        setMatch((prev) =>
+          mergeIncomingMatchState(prev, data as MatchState, 'init')
+        );
       }
     };
 
@@ -176,20 +275,34 @@ function MatchRoomContent() {
         },
         (payload) => {
           if (payload.new) {
-            setMatch(payload.new as MatchState);
+            setMatch((prev) =>
+              mergeIncomingMatchState(prev, payload.new as MatchState, 'db')
+            );
             setErrorMessage(null);
           }
         }
       )
       .on('broadcast', { event: 'ROFS_STATE_UPDATED' }, ({ payload }) => {
         if (payload?.state) {
-          setMatch(payload.state as MatchState);
+          setMatch((prev) =>
+            mergeIncomingMatchState(
+              prev,
+              payload.state as MatchState,
+              'broadcast'
+            )
+          );
           setErrorMessage(null);
         }
       })
       .on('broadcast', { event: 'BANPICK_STATE_UPDATED' }, ({ payload }) => {
         if (payload?.state) {
-          setMatch(payload.state as MatchState);
+          setMatch((prev) =>
+            mergeIncomingMatchState(
+              prev,
+              payload.state as MatchState,
+              'broadcast'
+            )
+          );
           setErrorMessage(null);
         }
       })
@@ -267,12 +380,15 @@ function MatchRoomContent() {
         state: nextState,
       });
 
-      // 로컬 서버 스토어(/api/matches/[match_id]) 영구 반영
+      // 로컬 서버 스토어(/api/matches/[match_id]) 영구 반영 (Supabase 중복 쓰기 방지)
       if (persistToDb) {
         fetch(`/api/matches/${encodeURIComponent(matchId)}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(nextState),
+          body: JSON.stringify({
+            ...nextState,
+            skipSupabase: Boolean(supabase),
+          }),
         }).catch(() => {});
       }
 

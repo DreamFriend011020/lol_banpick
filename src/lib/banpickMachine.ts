@@ -379,6 +379,17 @@ export function transitionBanPickState(
 
   // 챔피언 선택 완료(Lock-in) 및 타이머 종료(Timeout) 처리
   if (action.type === 'LOCK_IN' || action.type === 'TIMEOUT_TURN') {
+    if (
+      action.type === 'TIMEOUT_TURN' &&
+      typeof action.expectedTurnIndex === 'number' &&
+      action.expectedTurnIndex !== bp.current_turn_index
+    ) {
+      return {
+        ok: false,
+        error: '이미 다음 턴으로 진행되었습니다.',
+      };
+    }
+
     if (action.type === 'LOCK_IN' && action.actorSide !== currentStep.side) {
       return {
         ok: false,

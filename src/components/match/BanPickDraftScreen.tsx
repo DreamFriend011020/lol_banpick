@@ -68,6 +68,10 @@ export default function BanPickDraftScreen({
   const timeoutTriggeredTurnRef = useRef<number | null>(null);
   const swapTimeoutTriggeredRef = useRef<boolean>(false);
   const autoSavedRef = useRef<boolean>(false);
+  const localDeadlineRef = useRef<{
+    turnIndex: number;
+    deadlineAt: number;
+  } | null>(null);
 
   // 1. Data Dragon 최신 챔피언 목록 로드
   useEffect(() => {
@@ -132,11 +136,34 @@ export default function BanPickDraftScreen({
         ? Boolean(bp?.red_swap_ready)
         : false;
 
-  // 2. 턴 변경 시 타이머 트리거 레퍼런스 및 스왑 선택 슬롯 초기화
+  // 2. 턴 변경 시 현재 기기(PC)의 시계 기준으로 정확히 30초(스왑 60초) 마감 시각을 단 1회 고정
+  //    (참가자 PC 간 윈도우 시계 오차가 20~30초씩 나더라도 30초에서 3초로 갑자기 줄어들지 않도록 원천 차단)
   useEffect(() => {
     timeoutTriggeredTurnRef.current = null;
     setSelectedSwapSlot(null);
-  }, [bp?.current_turn_index, viewerSide]);
+
+    if (match.status !== 'BANPICK_IN_PROGRESS' || !bp) {
+      localDeadlineRef.current = null;
+      setRemainingSeconds(0);
+      return;
+    }
+
+    const turnIdx = bp.current_turn_index;
+    const maxSec = turnIdx >= 20 ? SWAP_DURATION_SECONDS : TURN_DURATION_SECONDS;
+    const maxMs = maxSec * 1000;
+
+    // 이미 동일한 턴의 로컬 타이머가 시작되어 돌아가고 있다면 절대 재설정하지 않고 유지
+    if (localDeadlineRef.current?.turnIndex === turnIdx) {
+      return;
+    }
+
+    const now = Date.now();
+    localDeadlineRef.current = {
+      turnIndex: turnIdx,
+      deadlineAt: now + maxMs,
+    };
+    setRemainingSeconds(maxSec);
+  }, [match.status, bp?.current_turn_index]);
 
   const isAutoSaveOn = match.auto_save_enabled !== false;
 
@@ -205,56 +232,110 @@ export default function BanPickDraftScreen({
     }
   };
 
-  // 3. 각 턴당 30초 & 라인 스왑 페이즈 60초 실시간 카운트다운 타이머 제어
+  // 3. 각 턴당 30초 & 라인 스왑 페이즈 60초 단일 카운트다운 타이머 제어
+  const latestTimerStateRef = useRef({
+    bp,
+    inSwapPhase,
+    currentStep,
+    isMyTurn,
+    viewerSide,
+    unavailableIds,
+    champions,
+    onDispatchBanPick,
+  });
+
   useEffect(() => {
-    if (match.status !== 'BANPICK_IN_PROGRESS' || !bp) {
+    latestTimerStateRef.current = {
+      bp,
+      inSwapPhase,
+      currentStep,
+      isMyTurn,
+      viewerSide,
+      unavailableIds,
+      champions,
+      onDispatchBanPick,
+    };
+  });
+
+  useEffect(() => {
+    if (match.status !== 'BANPICK_IN_PROGRESS') {
       setRemainingSeconds(0);
       return;
     }
 
     const updateTimer = () => {
-      const diffMs = bp.turn_deadline_at - Date.now();
-      const secs = Math.max(0, Math.ceil(diffMs / 1000));
-      setRemainingSeconds(secs);
+      const {
+        bp: currentBp,
+        inSwapPhase: currentInSwap,
+        currentStep: step,
+        isMyTurn: myTurn,
+        viewerSide: side,
+        unavailableIds: unavail,
+        champions: champList,
+        onDispatchBanPick: dispatch,
+      } = latestTimerStateRef.current;
 
-      // (A) 60초 라인 스왑 페이즈 타이머가 0초가 된 경우 -> 밴픽 최종 완료('COMPLETED') 전환
-      if (inSwapPhase && secs === 0 && !swapTimeoutTriggeredRef.current) {
+      if (!currentBp) return;
+
+      if (localDeadlineRef.current?.turnIndex !== currentBp.current_turn_index) {
+        const maxSec =
+          currentBp.current_turn_index >= 20
+            ? SWAP_DURATION_SECONDS
+            : TURN_DURATION_SECONDS;
+        localDeadlineRef.current = {
+          turnIndex: currentBp.current_turn_index,
+          deadlineAt: Date.now() + maxSec * 1000,
+        };
+      }
+
+      const deadlineAt = localDeadlineRef.current.deadlineAt;
+      const diffMs = deadlineAt - Date.now();
+      const secs = Math.max(0, Math.ceil(diffMs / 1000));
+      setRemainingSeconds((prev) => (prev !== secs ? secs : prev));
+
+      // (A) 60초 라인 스왑 페이즈 타이머 종료 시 -> 중복 호출 방지를 위해 역할별 시간차 적용
+      const swapGraceMs =
+        side === 'BLUE' ? 0 : side === 'RED' ? -1500 : -3000;
+      if (
+        currentInSwap &&
+        diffMs <= swapGraceMs &&
+        !swapTimeoutTriggeredRef.current
+      ) {
         swapTimeoutTriggeredRef.current = true;
-        onDispatchBanPick({
+        dispatch({
           type: 'FINISH_SWAP_PHASE',
         });
         return;
       }
 
-      // (B) 일반 밴/픽 턴(30초) 타이머가 0초가 된 경우 -> 자동 확정 (픽 미선택 시 랜덤픽)
-      const shouldTriggerTimeout = isMyTurn ? diffMs <= 0 : diffMs <= -500;
+      // (B) 일반 밴/픽 턴(30초) 타이머 종료 시 -> 현재 턴 팀이 0초에 즉시 처리, 미접속 시에만 상대팀(-2.5초)/옵저버(-4초)가 백업 처리
+      const timeoutGraceMs = myTurn ? 0 : side !== null ? -2500 : -4000;
       if (
-        !inSwapPhase &&
-        currentStep &&
-        shouldTriggerTimeout &&
-        champions.length > 0 &&
-        timeoutTriggeredTurnRef.current !== bp.current_turn_index
+        !currentInSwap &&
+        step &&
+        diffMs <= timeoutGraceMs &&
+        champList.length > 0 &&
+        timeoutTriggeredTurnRef.current !== currentBp.current_turn_index
       ) {
-        timeoutTriggeredTurnRef.current = bp.current_turn_index;
+        timeoutTriggeredTurnRef.current = currentBp.current_turn_index;
 
-        let fallbackId = bp.hovered_champion_id;
-        if (!fallbackId || unavailableIds.has(fallbackId)) {
-          if (currentStep.actionType === 'BAN') {
+        let fallbackId = currentBp.hovered_champion_id;
+        if (!fallbackId || unavail.has(fallbackId)) {
+          if (step.actionType === 'BAN') {
             fallbackId = 'NO_BAN';
           } else {
             // 아무 챔피언도 선택하지 않은 경우 남은 챔피언 중 랜덤 픽!
-            const availableList = champions.filter(
-              (c) => !unavailableIds.has(c.id)
-            );
+            const availableList = champList.filter((c) => !unavail.has(c.id));
             const randomChamp =
               availableList[Math.floor(Math.random() * availableList.length)];
             fallbackId = randomChamp ? randomChamp.id : 'Ahri';
           }
         }
 
-        onDispatchBanPick({
+        dispatch({
           type: 'TIMEOUT_TURN',
           fallbackChampionId: fallbackId,
+          expectedTurnIndex: currentBp.current_turn_index,
           now: Date.now(),
         });
       }
@@ -263,16 +344,7 @@ export default function BanPickDraftScreen({
     updateTimer();
     const intervalId = window.setInterval(updateTimer, 200);
     return () => window.clearInterval(intervalId);
-  }, [
-    match.status,
-    bp,
-    inSwapPhase,
-    currentStep,
-    isMyTurn,
-    unavailableIds,
-    champions,
-    onDispatchBanPick,
-  ]);
+  }, [match.status]);
 
   // 4. 검색창(한글명/영문명) 및 역할군 필터링
   const filteredChampions = useMemo(() => {
@@ -938,9 +1010,6 @@ export default function BanPickDraftScreen({
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">
                     60초 라인 스왑 (Champion Lane Swap)
-                  </span>
-                  <span className="text-xs text-slate-400">
-                    남은 시간: <strong className="text-amber-300">{remainingSeconds}초</strong>
                   </span>
                 </div>
                 <h3 className="text-lg font-extrabold text-white">

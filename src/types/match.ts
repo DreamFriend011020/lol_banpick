@@ -151,6 +151,7 @@ export type BanPickAction =
   | {
       type: 'TIMEOUT_TURN';
       fallbackChampionId: string; // 시간 초과 시 자동 픽/노밴 처리용
+      expectedTurnIndex?: number; // 중복 타임아웃 방지용 현재 턴 번호
       now?: number;
     }
   | {

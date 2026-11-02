@@ -7,6 +7,7 @@ import { buildMatchRolePath, InviteRole } from '../../lib/roleToken';
 import {
   getSeriesState,
   isMatchAutoSaveEnabled,
+  isScrimMatchRoom,
   transitionBanPickState,
 } from '../../lib/banpickMachine';
 import { supabase } from '../../lib/supabaseClient';
@@ -35,6 +36,9 @@ export default function AdminPage() {
     useState<boolean>(false);
 
   const [matches, setMatches] = useState<MatchState[]>([]);
+  const [activeListTab, setActiveListTab] = useState<'OFFICIAL' | 'SCRIM'>(
+    'OFFICIAL'
+  );
   const [selectedMatchIds, setSelectedMatchIds] = useState<string[]>([]);
   const [isDeletingSelected, setIsDeletingSelected] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -158,6 +162,7 @@ export default function AdminPage() {
           auto_save_enabled: autoSaveEnabled,
           drive_folder_id: driveFolderId.trim() || undefined,
           drive_webhook_url: driveWebhookUrl.trim() || undefined,
+          is_scrim: false,
         }),
       });
       const data = await res.json();
@@ -168,10 +173,19 @@ export default function AdminPage() {
       setFirstTeamName('');
       setSecondTeamName('');
       setCustomMatchId('');
+      setActiveListTab('OFFICIAL');
+      if (Array.isArray(data.created)) {
+        const createdIds = new Set(
+          data.created.map((c: MatchState) => c.match_id)
+        );
+        setMatches((prev) => [
+          ...data.created,
+          ...prev.filter((m) => !createdIds.has(m.match_id)),
+        ]);
+      }
       setNotice(
-        `경기가 생성되었습니다! 고유 링크: /match/${data.created[0].match_id}`
+        `공식 경기가 생성되었습니다! 고유 링크: /match/${data.created[0].match_id}`
       );
-      await fetchMatches();
     } catch (err) {
       setErrorMsg(
         err instanceof Error ? err.message : '경기 생성 중 오류가 발생했습니다.'
@@ -307,6 +321,7 @@ export default function AdminPage() {
       const payload = csvPreview.map((r) => ({
         ...r,
         auto_save_enabled: autoSaveEnabled,
+        is_scrim: false,
       }));
       const res = await fetch('/api/matches', {
         method: 'POST',
@@ -320,10 +335,19 @@ export default function AdminPage() {
 
       setCsvText('');
       setCsvPreview([]);
+      setActiveListTab('OFFICIAL');
+      if (Array.isArray(data.created)) {
+        const createdIds = new Set(
+          data.created.map((c: MatchState) => c.match_id)
+        );
+        setMatches((prev) => [
+          ...data.created,
+          ...prev.filter((m) => !createdIds.has(m.match_id)),
+        ]);
+      }
       setNotice(
-        `총 ${data.created.length}개의 경기가 일괄 생성되고 고유 링크가 발급되었습니다!`
+        `총 ${data.created.length}개의 공식 경기가 일괄 생성되고 고유 링크가 발급되었습니다!`
       );
-      await fetchMatches();
     } catch (err) {
       setErrorMsg(
         err instanceof Error
@@ -342,7 +366,7 @@ export default function AdminPage() {
       '2026 LCK 서머,8강 1경기,T1,GEN,3,ON,lck-qf-1,',
       '2026 LCK 서머,8강 2경기,HLE,DK,3,ON,lck-qf-2,',
       '2026 LCK 서머,4강 1경기,KT,KDF,5,ON,lck-sf-1,',
-      '2026 공식 스크림,연습 1경기,T1,GEN,3,OFF,scrim-01,',
+      '2026 LCK 서머,결승전,T1,HLE,5,ON,lck-final,',
     ].join('\n');
 
     const blob = new Blob(['\uFEFF' + sample], {
@@ -478,15 +502,27 @@ export default function AdminPage() {
     );
   };
 
-  // 체크박스 전체 선택 / 해제
+  // 관리자 생성 공식 경기 vs 메인 화면에서 생성된 자유 스크림 방 분리
+  const officialMatches = matches.filter((m) => !isScrimMatchRoom(m));
+  const scrimMatches = matches.filter((m) => isScrimMatchRoom(m));
+  const visibleMatches =
+    activeListTab === 'OFFICIAL' ? officialMatches : scrimMatches;
+
+  // 현재 탭의 체크박스 전체 선택 / 해제
   const isAllSelected =
-    matches.length > 0 && selectedMatchIds.length === matches.length;
+    visibleMatches.length > 0 &&
+    visibleMatches.every((m) => selectedMatchIds.includes(m.match_id));
 
   const handleToggleSelectAll = () => {
     if (isAllSelected) {
-      setSelectedMatchIds([]);
+      const visibleSet = new Set(visibleMatches.map((m) => m.match_id));
+      setSelectedMatchIds((prev) => prev.filter((id) => !visibleSet.has(id)));
     } else {
-      setSelectedMatchIds(matches.map((m) => m.match_id));
+      const merged = new Set([
+        ...selectedMatchIds,
+        ...visibleMatches.map((m) => m.match_id),
+      ]);
+      setSelectedMatchIds(Array.from(merged));
     }
   };
 
@@ -924,13 +960,38 @@ export default function AdminPage() {
           </section>
         </div>
 
-        {/* 3. 생성된 경기 및 고유 링크 목록 */}
+        {/* 3. 생성된 경기 및 고유 링크 목록 (공식 대회 매치 / 자유 스크림 방 완전 분리) */}
         <section className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <h2 className="text-lg font-bold text-white">
-                발급된 경기 세션 목록 ({matches.length})
-              </h2>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveListTab('OFFICIAL');
+                  setSelectedMatchIds([]);
+                }}
+                className={`px-4 py-2 rounded-xl text-xs font-extrabold border transition-all ${
+                  activeListTab === 'OFFICIAL'
+                    ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-lg shadow-amber-500/20'
+                    : 'bg-slate-950 text-slate-400 border-slate-800 hover:bg-slate-800'
+                }`}
+              >
+                🏆 공식 대회 매치 — 관리자 생성 ({officialMatches.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveListTab('SCRIM');
+                  setSelectedMatchIds([]);
+                }}
+                className={`px-4 py-2 rounded-xl text-xs font-extrabold border transition-all ${
+                  activeListTab === 'SCRIM'
+                    ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-lg shadow-emerald-500/20'
+                    : 'bg-slate-950 text-slate-400 border-slate-800 hover:bg-slate-800'
+                }`}
+              >
+                🎮 자유 스크림 방 — 일반 생성 ({scrimMatches.length})
+              </button>
               {selectedMatchIds.length > 0 && (
                 <span className="text-xs font-extrabold px-2.5 py-1 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40">
                   {selectedMatchIds.length}개 선택됨
@@ -963,9 +1024,11 @@ export default function AdminPage() {
             <div className="text-sm text-slate-400 py-8 text-center">
               경기 목록을 불러오는 중입니다...
             </div>
-          ) : matches.length === 0 ? (
+          ) : visibleMatches.length === 0 ? (
             <div className="text-sm text-slate-500 py-8 text-center border border-dashed border-slate-800 rounded-xl">
-              아직 등록된 경기가 없습니다. 위 폼에서 경기를 추가하거나 CSV를 업로드해주세요.
+              {activeListTab === 'OFFICIAL'
+                ? '등록된 공식 대회 경기가 없습니다. 위 폼에서 경기를 추가하거나 CSV를 업로드해주세요.'
+                : '생성된 자유 스크림 방 기록이 없습니다.'}
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -978,20 +1041,24 @@ export default function AdminPage() {
                         checked={isAllSelected}
                         onChange={handleToggleSelectAll}
                         className="w-4 h-4 rounded accent-amber-500 cursor-pointer"
-                        title="전체 선택 / 해제"
+                        title="현재 목록 전체 선택 / 해제"
                       />
                     </th>
                     <th className="py-3 px-3">대회 / 라운드</th>
                     <th className="py-3 px-3">현재 세트 FIRST / SECOND</th>
                     <th className="py-3 px-3">다전제 / 피어리스 / 상태</th>
-                    <th className="py-3 px-3">관리자 전용: 세트 승패 결정 (패배팀 → 다음 세트 FIRST)</th>
+                    <th className="py-3 px-3">
+                      {activeListTab === 'OFFICIAL'
+                        ? '관리자 전용: 세트 승패 결정 (패배팀 → 다음 세트 FIRST)'
+                        : '세트 승패 / 다음 세트 진행 (스크림은 자율 진행 가능)'}
+                    </th>
                     <th className="py-3 px-3">자동 저장</th>
                     <th className="py-3 px-3">팀별 전용 링크 복사</th>
                     <th className="py-3 px-3 text-right">관리</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/70">
-                  {matches.map((m) => {
+                  {visibleMatches.map((m) => {
                     const isAutoOn = isMatchAutoSaveEnabled(m);
                     const series = getSeriesState(m);
                     const isSelected = selectedMatchIds.includes(m.match_id);

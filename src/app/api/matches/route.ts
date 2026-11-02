@@ -4,7 +4,7 @@ import {
   upsertMatchesToStore,
 } from '../../../lib/matchStoreServer';
 import { supabase } from '../../../lib/supabaseClient';
-import { MatchState } from '../../../types/match';
+import { MatchState, SeriesState } from '../../../types/match';
 
 interface CreateMatchInput {
   match_id?: string;
@@ -15,6 +15,9 @@ interface CreateMatchInput {
   auto_save_enabled?: boolean;
   drive_folder_id?: string;
   drive_webhook_url?: string;
+  total_games?: number;
+  fearless_enabled?: boolean;
+  game_first_teams?: string[];
 }
 
 function generateMatchId(index: number = 0): string {
@@ -56,25 +59,48 @@ export async function POST(req: NextRequest) {
       if (!first || !second) return;
 
       const matchId = item.match_id?.trim() || generateMatchId(idx);
+      const totalGames = Math.max(1, Number(item.total_games) || 1);
+      const fearlessEnabled = Boolean(item.fearless_enabled);
+      const schedule =
+        Array.isArray(item.game_first_teams) && item.game_first_teams.length > 0
+          ? item.game_first_teams
+          : Array.from({ length: totalGames }, (_, i) =>
+              i % 2 === 0 ? first : second
+            );
+
+      const game1First = schedule[0] === second ? second : first;
+      const game1Second = game1First === first ? second : first;
+
+      const initialSeries: SeriesState = {
+        total_games: totalGames,
+        current_game: 1,
+        fearless_enabled: fearlessEnabled,
+        fearless_used_champions: [],
+        game_first_teams: schedule,
+        team_a_name: first,
+        team_b_name: second,
+      };
 
       created.push({
         match_id: matchId,
         tournament_name: item.tournament_name?.trim() || '공식 토너먼트',
         round_name: item.round_name?.trim() || `Round ${idx + 1}`,
-        team_first_name: first,
-        team_second_name: second,
+        team_first_name: game1First,
+        team_second_name: game1Second,
         status: 'ROFS_FIRST_PICK',
         selected_side: null,
         pick_turn: null,
         rofs_submissions: {
           first_choice: null,
           second_choice: null,
+          series_state: initialSeries,
         },
         banpick_state: null,
         auto_save_enabled:
           item.auto_save_enabled !== undefined ? item.auto_save_enabled : true,
         drive_folder_id: item.drive_folder_id?.trim() || undefined,
         drive_webhook_url: item.drive_webhook_url?.trim() || undefined,
+        series_state: initialSeries,
         created_at: nowIso,
       });
     });
@@ -107,6 +133,8 @@ export async function POST(req: NextRequest) {
           status: m.status,
           selected_side: m.selected_side,
           pick_turn: m.pick_turn,
+          rofs_submissions: m.rofs_submissions,
+          banpick_state: m.banpick_state,
         }));
         await supabase
           .from('matches')

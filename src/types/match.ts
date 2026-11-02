@@ -36,11 +36,26 @@ export interface SecondTeamRofsChoice {
 }
 
 /**
+ * 다전제(Bo3/Bo5 등) 및 하드 피어리스(Hard Fearless) 진행 상태
+ * (Supabase JSONB 컬럼인 rofs_submissions 내부에도 함께 저장되어 별도 DB 스키마 변경 없이 완벽 동기화됨)
+ */
+export interface SeriesState {
+  total_games: number;               // 총 진행 판수 (예: 1, 2, 3, 5)
+  current_game: number;              // 현재 진행 중인 세트 번호 (1 ~ total_games)
+  fearless_enabled: boolean;         // 하드 피어리스 룰 ON/OFF (이전 세트에서 픽된 모든 챔피언 금지)
+  fearless_used_champions: string[]; // 이전 세트들에서 픽된 누적 챔피언 ID 목록
+  game_first_teams: string[];        // 각 세트별(인덱스 0 = 1세트) FIRST 권한을 가질 팀 이름 배열
+  team_a_name: string;               // 1번 고정 링크(?key=f1...)를 발급받은 기준 팀 이름
+  team_b_name: string;               // 2번 고정 링크(?key=s2...)를 발급받은 기준 팀 이름
+}
+
+/**
  * 양 팀의 동시 RoFS 제출 상태
  */
 export interface RofsSubmissions {
   first_choice: FirstTeamRofsChoice | null;
   second_choice: SecondTeamRofsChoice | null;
+  series_state?: SeriesState;
 }
 
 /**
@@ -109,6 +124,7 @@ export interface MatchState {
   auto_save_enabled?: boolean;  // 밴픽 종료 시 자동 저장 활성화 여부
   drive_folder_id?: string;     // 이 경기를 저장할 특정 구글 드라이브 폴더 링크 또는 ID (미지정 시 기본 폴더)
   drive_webhook_url?: string;   // 다른 구글 계정의 드라이브 웹앱 URL (선택)
+  series_state?: SeriesState;   // 다전제 및 하드 피어리스 상태
   created_at?: string;
 }
 
@@ -170,6 +186,15 @@ export type BanPickAction =
   | {
       type: 'TOGGLE_AUTO_SAVE';
       enabled: boolean;
+    }
+  | {
+      type: 'TOGGLE_FEARLESS';
+      enabled: boolean;
+    }
+  | {
+      type: 'START_NEXT_GAME';
+      nextFirstTeamName: string;
+      fearlessEnabled?: boolean;
     };
 
 /**

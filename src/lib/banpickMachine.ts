@@ -3,6 +3,7 @@ import {
   BanPickState,
   DraftTurnStep,
   MatchState,
+  SeriesState,
   SideChoice,
   TeamRole,
   TransitionResult,
@@ -135,12 +136,62 @@ export function getCurrentTurnStep(
 }
 
 /**
- * 이미 밴되었거나 픽된 챔피언 ID 집합 반환 ('NO_BAN' 및 null 제외)
+ * 경기의 다전제(Series) 및 하드 피어리스 설정 상태를 안전하게 조회합니다.
  */
-export function getUnavailableChampionIds(banPickState?: BanPickState | null): Set<string> {
-  if (!banPickState) return new Set();
+export function getSeriesState(match?: MatchState | null): SeriesState {
+  const raw = match?.rofs_submissions?.series_state ?? match?.series_state;
+  const teamA = raw?.team_a_name || match?.team_first_name || 'T1';
+  const teamB = raw?.team_b_name || match?.team_second_name || 'GEN';
+  const totalGames = Math.max(1, raw?.total_games ?? 1);
+  const currentGame = Math.max(1, raw?.current_game ?? 1);
+
+  const defaultSchedule = Array.from({ length: totalGames }, (_, idx) =>
+    idx % 2 === 0 ? teamA : teamB
+  );
+
+  return {
+    total_games: totalGames,
+    current_game: currentGame,
+    fearless_enabled: Boolean(raw?.fearless_enabled),
+    fearless_used_champions: Array.isArray(raw?.fearless_used_champions)
+      ? raw.fearless_used_champions
+      : [],
+    game_first_teams:
+      Array.isArray(raw?.game_first_teams) && raw.game_first_teams.length > 0
+        ? raw.game_first_teams
+        : defaultSchedule,
+    team_a_name: teamA,
+    team_b_name: teamB,
+  };
+}
+
+/**
+ * 하드 피어리스(Hard Fearless) 룰에 의해 이전 세트에서 이미 픽되어 사용 금지된 챔피언 ID 집합 반환
+ */
+export function getFearlessChampionIds(match?: MatchState | null): Set<string> {
+  const series = getSeriesState(match);
+  if (!series.fearless_enabled) {
+    return new Set();
+  }
+  return new Set(
+    series.fearless_used_champions.filter((id): id is string =>
+      Boolean(id && id !== 'NO_BAN')
+    )
+  );
+}
+
+/**
+ * 이미 밴되었거나 픽된 챔피언 + 하드 피어리스 금지 챔피언 ID 집합 반환 ('NO_BAN' 및 null 제외)
+ */
+export function getUnavailableChampionIds(
+  banPickState?: BanPickState | null,
+  match?: MatchState | null
+): Set<string> {
+  const fearlessSet = getFearlessChampionIds(match);
+  if (!banPickState) return fearlessSet;
 
   const allSelected = [
+    ...Array.from(fearlessSet),
     ...banPickState.blue_bans,
     ...banPickState.red_bans,
     ...banPickState.blue_picks,
@@ -183,6 +234,85 @@ export function transitionBanPickState(
       state: {
         ...state,
         auto_save_enabled: action.enabled,
+      },
+    };
+  }
+
+  // 0-1. 하드 피어리스(Hard Fearless) ON/OFF 토글 액션
+  if (action.type === 'TOGGLE_FEARLESS') {
+    const currentSeries = getSeriesState(state);
+    const updatedSeries: SeriesState = {
+      ...currentSeries,
+      fearless_enabled: action.enabled,
+    };
+    return {
+      ok: true,
+      state: {
+        ...state,
+        series_state: updatedSeries,
+        rofs_submissions: {
+          first_choice: state.rofs_submissions?.first_choice ?? null,
+          second_choice: state.rofs_submissions?.second_choice ?? null,
+          series_state: updatedSeries,
+        },
+      },
+    };
+  }
+
+  // 0-2. 다전제 다음 세트(Game N+1) 시작 및 FIRST/SECOND 배정 전환 액션
+  if (action.type === 'START_NEXT_GAME') {
+    const currentSeries = getSeriesState(state);
+    const currentPicks = state.banpick_state
+      ? [
+          ...state.banpick_state.blue_picks,
+          ...state.banpick_state.red_picks,
+        ].filter((id): id is string => Boolean(id && id !== 'NO_BAN'))
+      : [];
+
+    const accumulatedFearless = Array.from(
+      new Set([...currentSeries.fearless_used_champions, ...currentPicks])
+    );
+
+    const nextGameNum = currentSeries.current_game + 1;
+    const nextTotalGames = Math.max(currentSeries.total_games, nextGameNum);
+
+    const teamA = currentSeries.team_a_name;
+    const teamB = currentSeries.team_b_name;
+    const chosenFirst =
+      action.nextFirstTeamName === teamB ? teamB : teamA;
+    const chosenSecond = chosenFirst === teamA ? teamB : teamA;
+
+    const nextSchedule = [...currentSeries.game_first_teams];
+    nextSchedule[nextGameNum - 1] = chosenFirst;
+
+    const updatedSeries: SeriesState = {
+      ...currentSeries,
+      total_games: nextTotalGames,
+      current_game: nextGameNum,
+      fearless_enabled:
+        action.fearlessEnabled !== undefined
+          ? action.fearlessEnabled
+          : currentSeries.fearless_enabled,
+      fearless_used_champions: accumulatedFearless,
+      game_first_teams: nextSchedule,
+    };
+
+    return {
+      ok: true,
+      state: {
+        ...state,
+        team_first_name: chosenFirst,
+        team_second_name: chosenSecond,
+        status: 'ROFS_FIRST_PICK',
+        selected_side: null,
+        pick_turn: null,
+        banpick_state: null,
+        series_state: updatedSeries,
+        rofs_submissions: {
+          first_choice: null,
+          second_choice: null,
+          series_state: updatedSeries,
+        },
       },
     };
   }
@@ -343,7 +473,7 @@ export function transitionBanPickState(
     };
   }
 
-  const unavailableIds = getUnavailableChampionIds(bp);
+  const unavailableIds = getUnavailableChampionIds(bp, state);
 
   // 챔피언 프리뷰(Hover) 액션
   if (action.type === 'HOVER_CHAMPION') {

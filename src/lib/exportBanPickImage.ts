@@ -102,14 +102,27 @@ export async function renderBanPickResultToDataUrl(
   );
 
   // 중앙 매치 정보
+  const currentSet =
+    match.rofs_submissions?.series_state?.current_game ??
+    match.series_state?.current_game ??
+    1;
+  const totalSets =
+    match.rofs_submissions?.series_state?.total_games ??
+    match.series_state?.total_games ??
+    1;
+
   ctx.textAlign = 'center';
   ctx.fillStyle = '#f59e0b';
   ctx.font = 'bold 18px sans-serif';
-  ctx.fillText('OFFICIAL TOURNAMENT DRAFT RESULT', width / 2, 82);
+  ctx.fillText(
+    `OFFICIAL TOURNAMENT DRAFT RESULT · SET ${currentSet}/${totalSets}`,
+    width / 2,
+    82
+  );
 
   ctx.fillStyle = '#ffffff';
   ctx.font = 'bold 28px sans-serif';
-  ctx.fillText(`MATCH: ${match.match_id}`, width / 2, 120);
+  ctx.fillText(`MATCH: ${match.match_id} (SET ${currentSet})`, width / 2, 120);
 
   ctx.fillStyle = '#64748b';
   ctx.font = '15px sans-serif';
@@ -369,7 +382,11 @@ export async function saveBanPickScreenForStaff(
     .replace(/[:.]/g, '-')
     .slice(0, 19);
 
-  const fileName = `banpick_${match.match_id}_${blueTeam}_vs_${redTeam}_${dateStr}.png`;
+  const currentSet =
+    match.rofs_submissions?.series_state?.current_game ??
+    match.series_state?.current_game ??
+    1;
+  const fileName = `banpick_${match.match_id}_set${currentSet}_${blueTeam}_vs_${redTeam}_${dateStr}.png`;
   const imageDataUrl = await renderBanPickResultToDataUrl(match, championMap);
 
   // 1) 브라우저 자동 다운로드 실행

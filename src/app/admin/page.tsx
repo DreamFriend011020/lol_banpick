@@ -38,9 +38,26 @@ export default function AdminPage() {
   const [firstTeamName, setFirstTeamName] = useState('');
   const [secondTeamName, setSecondTeamName] = useState('');
   const [customMatchId, setCustomMatchId] = useState('');
+  const [totalGames, setTotalGames] = useState<number>(3);
+  const [fearlessEnabled, setFearlessEnabled] = useState<boolean>(true);
+  const [gameFirstSlots, setGameFirstSlots] = useState<('A' | 'B')[]>([
+    'A',
+    'B',
+    'A',
+    'B',
+    'A',
+  ]);
   const [autoSaveEnabled, setAutoSaveEnabled] = useState<boolean>(true);
   const [driveFolderId, setDriveFolderId] = useState<string>('');
   const [driveWebhookUrl, setDriveWebhookUrl] = useState<string>('');
+
+  const handleToggleAdminGameFirst = (gameIdx: number, slot: 'A' | 'B') => {
+    setGameFirstSlots((prev) => {
+      const next = [...prev];
+      next[gameIdx] = slot;
+      return next;
+    });
+  };
 
   // CSV 일괄 업로드 상태
   const [csvText, setCsvText] = useState('');
@@ -121,15 +138,24 @@ export default function AdminPage() {
 
     setIsSubmitting(true);
     try {
+      const first = firstTeamName.trim();
+      const second = secondTeamName.trim();
+      const schedule = Array.from({ length: totalGames }, (_, idx) =>
+        gameFirstSlots[idx] === 'B' ? second : first
+      );
+
       const res = await fetch('/api/matches', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           tournament_name: tournamentName.trim() || '공식 토너먼트',
           round_name: roundName.trim() || '1라운드',
-          team_first_name: firstTeamName.trim(),
-          team_second_name: secondTeamName.trim(),
+          team_first_name: first,
+          team_second_name: second,
           match_id: customMatchId.trim() || undefined,
+          total_games: totalGames,
+          fearless_enabled: fearlessEnabled,
+          game_first_teams: schedule,
           auto_save_enabled: autoSaveEnabled,
           drive_folder_id: driveFolderId.trim() || undefined,
           drive_webhook_url: driveWebhookUrl.trim() || undefined,
@@ -507,6 +533,104 @@ export default function AdminPage() {
                   placeholder="예: match-qf-01"
                   className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3.5 py-2 text-sm text-white focus:outline-none focus:border-amber-400"
                 />
+              </div>
+
+              {/* 다전제 판수 & 매 세트 FIRST/SECOND 설정 & 하드 피어리스 ON/OFF */}
+              <div className="rounded-xl bg-slate-950 border border-slate-800 p-3.5 space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-bold text-slate-200">
+                    진행 판수 (다전제 설정)
+                  </span>
+                  <div className="flex items-center gap-1">
+                    {[1, 2, 3, 4, 5].map((cnt) => (
+                      <button
+                        key={cnt}
+                        type="button"
+                        onClick={() => setTotalGames(cnt)}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-extrabold transition-colors ${
+                          totalGames === cnt
+                            ? 'bg-amber-500 text-slate-950'
+                            : 'bg-slate-900 text-slate-400 border border-slate-700 hover:bg-slate-800'
+                        }`}
+                      >
+                        {cnt}판
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 하드 피어리스 ON/OFF 토글 */}
+                <div className="flex items-center justify-between pt-2 border-t border-slate-800/80">
+                  <div>
+                    <div className="text-xs font-bold text-rose-300">
+                      🔥 하드 피어리스 룰 (Hard Fearless Draft)
+                    </div>
+                    <div className="text-[11px] text-slate-400">
+                      {fearlessEnabled
+                        ? 'ON: 이전 세트에서 픽된 모든 챔피언이 다음 세트에서 누적 금지됩니다.'
+                        : 'OFF: 이전 세트 픽과 무관하게 모든 챔피언을 사용할 수 있습니다.'}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setFearlessEnabled((prev) => !prev)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-extrabold transition-colors flex-shrink-0 ${
+                      fearlessEnabled
+                        ? 'bg-rose-500 text-white'
+                        : 'bg-slate-800 text-slate-400 border border-slate-700'
+                    }`}
+                  >
+                    {fearlessEnabled ? '피어리스 ON' : '피어리스 OFF'}
+                  </button>
+                </div>
+
+                {/* 세트별 FIRST / SECOND 팀 지정 */}
+                <div className="pt-2 border-t border-slate-800/80 space-y-1.5">
+                  <div className="text-[11px] font-bold text-slate-300">
+                    매 세트 FIRST(선결정) / SECOND(후결정) 팀 배정
+                  </div>
+                  <div className="space-y-1.5">
+                    {Array.from({ length: totalGames }, (_, idx) => {
+                      const isAFirst = gameFirstSlots[idx] !== 'B';
+                      const nameA = firstTeamName.trim() || '팀 1';
+                      const nameB = secondTeamName.trim() || '팀 2';
+                      return (
+                        <div
+                          key={`admin-game-slot-${idx}`}
+                          className="flex items-center justify-between gap-2 text-xs bg-slate-900/90 px-2.5 py-1.5 rounded-lg border border-slate-800"
+                        >
+                          <span className="font-bold text-slate-300 w-12">
+                            {idx + 1}세트
+                          </span>
+                          <div className="flex items-center gap-1.5 flex-1 justify-end">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleAdminGameFirst(idx, 'A')}
+                              className={`px-2 py-1 rounded text-[11px] font-bold border transition-all ${
+                                isAFirst
+                                  ? 'border-amber-400 bg-amber-500/20 text-amber-300'
+                                  : 'border-slate-700 bg-slate-950 text-slate-500'
+                              }`}
+                            >
+                              FIRST: {nameA} / SECOND: {nameB}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleToggleAdminGameFirst(idx, 'B')}
+                              className={`px-2 py-1 rounded text-[11px] font-bold border transition-all ${
+                                !isAFirst
+                                  ? 'border-cyan-400 bg-cyan-500/20 text-cyan-300'
+                                  : 'border-slate-700 bg-slate-950 text-slate-500'
+                              }`}
+                            >
+                              FIRST: {nameB} / SECOND: {nameA}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
 
               {/* 밴픽 종료 시 자동 저장 ON/OFF 토글 및 저장할 드라이브 폴더 지정 */}

@@ -98,8 +98,14 @@ export async function POST(req: NextRequest) {
       fileName || `banpick_${matchId || 'match'}_${Date.now()}.png`
     ).replace(/[^a-zA-Z0-9가-힣._-]/g, '_');
 
-    // 이미 자동 업로드된 매치이고 수동 재시도가 아니라면 중복 업로드 건너뛰기
-    if (matchId && !isManualRetry && uploadedMatchesCache.has(matchId)) {
+    const currentSet =
+      matchState?.rofs_submissions?.series_state?.current_game ??
+      matchState?.series_state?.current_game ??
+      1;
+    const dedupeKey = matchId ? `${matchId}::set${currentSet}` : '';
+
+    // 이미 자동 업로드된 세트이고 수동 재시도가 아니라면 중복 업로드 건너뛰기
+    if (dedupeKey && !isManualRetry && uploadedMatchesCache.has(dedupeKey)) {
       return NextResponse.json({
         ok: true,
         skippedDuplicate: true,
@@ -107,8 +113,8 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    if (matchId) {
-      uploadedMatchesCache.add(matchId);
+    if (dedupeKey) {
+      uploadedMatchesCache.add(dedupeKey);
     }
 
     const base64Data = imageDataUrl.replace(/^data:image\/png;base64,/, '');

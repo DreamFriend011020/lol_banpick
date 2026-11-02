@@ -6,7 +6,10 @@ import Link from 'next/link';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { BanPickAction, MatchState, RofsAction } from '../../../types/match';
 import { transitionRofsState } from '../../../lib/rofsMachine';
-import { transitionBanPickState } from '../../../lib/banpickMachine';
+import {
+  getSeriesState,
+  transitionBanPickState,
+} from '../../../lib/banpickMachine';
 import { resolveRoleFromKey } from '../../../lib/roleToken';
 import { supabase } from '../../../lib/supabaseClient';
 import RofsSelectionScreen, {
@@ -59,6 +62,18 @@ function mergeIncomingMatchState(
   incoming: MatchState,
   source: 'broadcast' | 'db' | 'init'
 ): MatchState {
+  const prevGame = getSeriesState(prev).current_game;
+  const nextGame = getSeriesState(incoming).current_game;
+
+  // 다전제 다음 세트로 넘어간 경우 즉시 새 세트 상태 수락
+  if (nextGame > prevGame) {
+    return incoming;
+  }
+  // 이전 세트의 지연 패킷은 무시
+  if (nextGame < prevGame) {
+    return prev;
+  }
+
   if (source === 'init') {
     const prevRank = STATUS_PRIORITY[prev.status] ?? 0;
     const nextRank = STATUS_PRIORITY[incoming.status] ?? 0;
@@ -348,6 +363,8 @@ function MatchRoomContent() {
         const { error } = await supabase
           .from('matches')
           .update({
+            team_first_name: nextState.team_first_name,
+            team_second_name: nextState.team_second_name,
             status: nextState.status,
             selected_side: nextState.selected_side,
             pick_turn: nextState.pick_turn,
@@ -447,6 +464,22 @@ function MatchRoomContent() {
     [match, broadcastAndPersistState]
   );
 
+  const seriesState = getSeriesState(match);
+
+  // 다전제에서 세트별로 FIRST/SECOND 팀이 바뀌더라도,
+  // 각 팀장이 처음 발급받은 본인 팀 전용 링크 하나로 자기 팀의 현재 세트 역할(FIRST 또는 SECOND)을 그대로 수행하도록 매핑
+  const effectiveViewerRole: ViewerRole = React.useMemo(() => {
+    if (viewerRole === 'OBSERVER') return 'OBSERVER';
+    const myTeamName =
+      viewerRole === 'FIRST'
+        ? seriesState.team_a_name
+        : seriesState.team_b_name;
+
+    if (match.team_first_name === myTeamName) return 'FIRST';
+    if (match.team_second_name === myTeamName) return 'SECOND';
+    return viewerRole;
+  }, [viewerRole, seriesState.team_a_name, seriesState.team_b_name, match.team_first_name, match.team_second_name]);
+
   return (
     <div className="relative">
       {/* 상단 고정 상태 바 (전용 초대 링크로 부여된 권한만 표시, 임의 변경 불가) */}
@@ -458,27 +491,39 @@ function MatchRoomContent() {
           >
             ← 메인 홈
           </Link>
+          <span className="px-2.5 py-1 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 font-extrabold">
+            세트 {seriesState.current_game} / {seriesState.total_games}
+          </span>
           <span>
             접속 권한 (전용 링크 인증됨):{' '}
             <strong
               className={
-                viewerRole === 'FIRST'
+                effectiveViewerRole === 'FIRST'
                   ? 'text-amber-300'
-                  : viewerRole === 'SECOND'
+                  : effectiveViewerRole === 'SECOND'
                     ? 'text-cyan-300'
                     : 'text-slate-300'
               }
             >
-              {viewerRole === 'FIRST'
-                ? `🔒 FIRST 팀장 (${match.team_first_name})`
-                : viewerRole === 'SECOND'
-                  ? `🔒 SECOND 팀장 (${match.team_second_name})`
+              {effectiveViewerRole === 'FIRST'
+                ? `🔒 이번 세트 FIRST 팀장 (${match.team_first_name})`
+                : effectiveViewerRole === 'SECOND'
+                  ? `🔒 이번 세트 SECOND 팀장 (${match.team_second_name})`
                   : '👀 옵저버 / 관전 전용 (읽기 전용)'}
             </strong>
           </span>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <span
+            className={`px-3 py-1 rounded font-bold border ${
+              seriesState.fearless_enabled
+                ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                : 'bg-slate-800/80 text-slate-400 border-slate-700'
+            }`}
+          >
+            🔥 하드 피어리스: {seriesState.fearless_enabled ? `ON (누적 금지 ${seriesState.fearless_used_champions.length}명)` : 'OFF'}
+          </span>
           <span
             className={`px-3 py-1 rounded font-bold border ${
               match.auto_save_enabled !== false
@@ -496,7 +541,7 @@ function MatchRoomContent() {
         match.status === 'ROFS_SECOND_PICK') && (
         <RofsSelectionScreen
           match={match}
-          viewerRole={viewerRole}
+          viewerRole={effectiveViewerRole}
           isSubmitting={isSubmitting}
           errorMessage={errorMessage}
           onConfirmAction={handleConfirmRofsAction}
@@ -509,7 +554,7 @@ function MatchRoomContent() {
         match.status === 'COMPLETED') && (
         <BanPickDraftScreen
           match={match}
-          viewerRole={viewerRole}
+          viewerRole={effectiveViewerRole}
           isSubmitting={isSubmitting}
           errorMessage={errorMessage}
           onDispatchBanPick={handleDispatchBanPick}

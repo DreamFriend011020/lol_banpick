@@ -159,6 +159,7 @@ export function transitionRofsState(
   }
 
   const nextSubmissions: RofsSubmissions = {
+    ...currentSubmissions,
     first_choice: nextFirstChoice,
     second_choice: nextSecondChoice,
   };

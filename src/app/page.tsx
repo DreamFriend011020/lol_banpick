@@ -14,12 +14,25 @@ export default function HomePage() {
   // 자유 스크림 방 즉시 생성 상태
   const [scrimFirstTeam, setScrimFirstTeam] = useState('');
   const [scrimSecondTeam, setScrimSecondTeam] = useState('');
+  const [scrimTotalGames, setScrimTotalGames] = useState<number>(3);
+  const [scrimFearless, setScrimFearless] = useState<boolean>(true);
+  const [scrimGameFirstSlots, setScrimGameFirstSlots] = useState<
+    ('A' | 'B')[]
+  >(['A', 'B', 'A', 'B', 'A']);
   const [scrimAutoSave, setScrimAutoSave] = useState<boolean>(false);
   const [scrimDriveFolder, setScrimDriveFolder] = useState<string>('');
   const [isCreatingScrim, setIsCreatingScrim] = useState(false);
   const [scrimError, setScrimError] = useState<string | null>(null);
   const [createdScrimId, setCreatedScrimId] = useState<string | null>(null);
   const [copiedRole, setCopiedRole] = useState<InviteRole | null>(null);
+
+  const handleToggleScrimGameFirst = (gameIdx: number, teamSlot: 'A' | 'B') => {
+    setScrimGameFirstSlots((prev) => {
+      const next = [...prev];
+      next[gameIdx] = teamSlot;
+      return next;
+    });
+  };
 
   const handleEnterMatch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,15 +68,23 @@ export default function HomePage() {
       const timePart = Date.now().toString(36).slice(-4);
       const scrimMatchId = `scrim-${timePart}${rand}`;
 
+      const gameFirstTeams = Array.from(
+        { length: scrimTotalGames },
+        (_, idx) => (scrimGameFirstSlots[idx] === 'B' ? second : first)
+      );
+
       const res = await fetch('/api/matches', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           match_id: scrimMatchId,
           tournament_name: '자유 스크림 (연습)',
-          round_name: '연습 경기',
+          round_name: `연습 경기 (${scrimTotalGames}세트)`,
           team_first_name: first,
           team_second_name: second,
+          total_games: scrimTotalGames,
+          fearless_enabled: scrimFearless,
+          game_first_teams: gameFirstTeams,
           auto_save_enabled: scrimAutoSave,
           drive_folder_id: scrimDriveFolder.trim() || undefined,
         }),
@@ -155,7 +176,7 @@ export default function HomePage() {
 
                 <div>
                   <label className="block text-xs font-bold text-cyan-400 mb-1">
-                    SECOND 팀 이름 (후결정권 팀)
+                    팀 2 이름 (기준 팀 B)
                   </label>
                   <input
                     type="text"
@@ -165,6 +186,108 @@ export default function HomePage() {
                     placeholder="예: 레드팀 또는 GEN"
                     className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-cyan-400"
                   />
+                </div>
+
+                {/* 다전제 판수 & 매 세트 FIRST/SECOND 설정 & 하드 피어리스 ON/OFF */}
+                <div className="rounded-xl bg-slate-950 border border-slate-800 p-3.5 space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-bold text-slate-200">
+                      진행 판수 (다전제 설정)
+                    </span>
+                    <div className="flex items-center gap-1">
+                      {[1, 2, 3, 4, 5].map((cnt) => (
+                        <button
+                          key={cnt}
+                          type="button"
+                          onClick={() => setScrimTotalGames(cnt)}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-extrabold transition-colors ${
+                            scrimTotalGames === cnt
+                              ? 'bg-amber-500 text-slate-950'
+                              : 'bg-slate-900 text-slate-400 border border-slate-700 hover:bg-slate-800'
+                          }`}
+                        >
+                          {cnt}판
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* 하드 피어리스 ON/OFF 토글 */}
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-800/80">
+                    <div>
+                      <div className="text-xs font-bold text-rose-300">
+                        🔥 하드 피어리스 룰 (Hard Fearless)
+                      </div>
+                      <div className="text-[11px] text-slate-400">
+                        {scrimFearless
+                          ? 'ON: 이전 세트에서 양 팀이 픽한 모든 챔피언이 다음 세트에서 금지됩니다.'
+                          : 'OFF: 이전 세트 픽과 무관하게 매 세트 모든 챔피언을 사용할 수 있습니다.'}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setScrimFearless((prev) => !prev)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-extrabold transition-colors flex-shrink-0 ${
+                        scrimFearless
+                          ? 'bg-rose-500 text-white'
+                          : 'bg-slate-800 text-slate-400 border border-slate-700'
+                      }`}
+                    >
+                      {scrimFearless ? '피어리스 ON' : '피어리스 OFF'}
+                    </button>
+                  </div>
+
+                  {/* 세트별 FIRST / SECOND 팀 지정 */}
+                  <div className="pt-2 border-t border-slate-800/80 space-y-1.5">
+                    <div className="text-[11px] font-bold text-slate-300">
+                      매 세트 FIRST(선결정) / SECOND(후결정) 팀 배정
+                    </div>
+                    <div className="space-y-1.5">
+                      {Array.from({ length: scrimTotalGames }, (_, idx) => {
+                        const isAFirst = scrimGameFirstSlots[idx] !== 'B';
+                        const nameA = scrimFirstTeam.trim() || '팀 1';
+                        const nameB = scrimSecondTeam.trim() || '팀 2';
+                        return (
+                          <div
+                            key={`scrim-game-slot-${idx}`}
+                            className="flex items-center justify-between gap-2 text-xs bg-slate-900/90 px-2.5 py-1.5 rounded-lg border border-slate-800"
+                          >
+                            <span className="font-bold text-slate-300 w-12">
+                              {idx + 1}세트
+                            </span>
+                            <div className="flex items-center gap-1.5 flex-1 justify-end">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleToggleScrimGameFirst(idx, 'A')
+                                }
+                                className={`px-2 py-1 rounded text-[11px] font-bold border transition-all ${
+                                  isAFirst
+                                    ? 'border-amber-400 bg-amber-500/20 text-amber-300'
+                                    : 'border-slate-700 bg-slate-950 text-slate-500'
+                                }`}
+                              >
+                                FIRST: {nameA} / SECOND: {nameB}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleToggleScrimGameFirst(idx, 'B')
+                                }
+                                className={`px-2 py-1 rounded text-[11px] font-bold border transition-all ${
+                                  !isAFirst
+                                    ? 'border-cyan-400 bg-cyan-500/20 text-cyan-300'
+                                    : 'border-slate-700 bg-slate-950 text-slate-500'
+                                }`}
+                              >
+                                FIRST: {nameB} / SECOND: {nameA}
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
 
                 {/* 밴픽 종료 시 자동 저장 ON/OFF 스위치 및 저장할 드라이브 폴더 지정 */}

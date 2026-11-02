@@ -9,6 +9,8 @@ import {
 } from '../../types/match';
 import {
   getCurrentTurnStep,
+  getFearlessChampionIds,
+  getSeriesState,
   getUnavailableChampionIds,
   isInSwapPhase,
   resolveViewerSide,
@@ -107,12 +109,37 @@ export default function BanPickDraftScreen({
   }, [champions]);
 
   const bp = match.banpick_state;
+  const seriesState = useMemo(() => getSeriesState(match), [match]);
+  const fearlessIds = useMemo(() => getFearlessChampionIds(match), [match]);
   const inSwapPhase = isInSwapPhase(match);
   const currentStep = useMemo(
     () => getCurrentTurnStep(bp, match),
     [bp, match]
   );
-  const unavailableIds = useMemo(() => getUnavailableChampionIds(bp), [bp]);
+  const unavailableIds = useMemo(
+    () => getUnavailableChampionIds(bp, match),
+    [bp, match]
+  );
+
+  // 다음 세트 진행 시 누가 FIRST 팀을 맡을지 선택하는 상태
+  const scheduledNextFirst =
+    seriesState.game_first_teams[seriesState.current_game] ??
+    (match.team_first_name === seriesState.team_a_name
+      ? seriesState.team_b_name
+      : seriesState.team_a_name);
+
+  const [nextGameFirstTeam, setNextGameFirstTeam] =
+    useState<string>(scheduledNextFirst);
+  const [nextGameFearless, setNextGameFearless] = useState<boolean>(
+    seriesState.fearless_enabled
+  );
+
+  useEffect(() => {
+    setNextGameFirstTeam(scheduledNextFirst);
+    setNextGameFearless(seriesState.fearless_enabled);
+    autoSavedRef.current = false;
+    swapTimeoutTriggeredRef.current = false;
+  }, [seriesState.current_game, scheduledNextFirst, seriesState.fearless_enabled]);
 
   // 현재 접속자의 진영('BLUE' | 'RED' | null) 판별
   const viewerSide: SideChoice | null = useMemo(
@@ -912,16 +939,16 @@ export default function BanPickDraftScreen({
             )}
 
             {match.status === 'COMPLETED' && (
-              <div className="mt-2 flex flex-col items-center gap-2 w-full">
+              <div className="mt-2 flex flex-col items-center gap-2.5 w-full">
                 <div className="px-4 py-1.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-sm font-bold">
-                  모든 밴픽과 라인 배치가 완료되었습니다! 인게임 세트를 시작하세요.
+                  {seriesState.current_game}세트 밴픽 및 라인 배치가 완료되었습니다!
                 </div>
                 {savedNotice && (
                   <span className="text-xs text-amber-300 font-medium text-center">
                     ✓ {savedNotice}
                   </span>
                 )}
-                <div className="flex flex-wrap items-center justify-center gap-2 w-full max-w-md mt-1">
+                <div className="flex flex-wrap items-center justify-center gap-2 w-full max-w-md">
                   <input
                     type="text"
                     value={customDriveFolderInput}
@@ -938,6 +965,76 @@ export default function BanPickDraftScreen({
                     {isExportingImage
                       ? '이미지 저장 중...'
                       : '구글 드라이브 & 내 PC 저장'}
+                  </button>
+                </div>
+
+                {/* 다전제 / 추가 스크림 다음 세트(Game N+1) 설정 및 시작 컨트롤 */}
+                <div className="w-full max-w-lg mt-1 rounded-xl bg-slate-950/90 border border-amber-500/40 p-3 space-y-2.5 text-left">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-extrabold text-amber-300">
+                      다음 세트 ({seriesState.current_game + 1}세트
+                      {seriesState.total_games > 1
+                        ? ` / 총 ${seriesState.total_games}세트`
+                        : ' · 추가 세트'}
+                      ) 진행 설정
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setNextGameFearless((prev) => !prev)}
+                      className={`px-2.5 py-0.5 rounded text-[11px] font-extrabold border transition-colors ${
+                        nextGameFearless
+                          ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                          : 'bg-slate-800 text-slate-400 border-slate-700'
+                      }`}
+                    >
+                      🔥 하드 피어리스: {nextGameFearless ? 'ON' : 'OFF'}
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setNextGameFirstTeam(seriesState.team_a_name)
+                      }
+                      className={`py-1.5 px-2.5 rounded-lg text-xs font-bold border transition-all ${
+                        nextGameFirstTeam === seriesState.team_a_name
+                          ? 'border-amber-400 bg-amber-500/20 text-amber-200'
+                          : 'border-slate-800 bg-slate-900 text-slate-400 hover:border-slate-700'
+                      }`}
+                    >
+                      FIRST: {seriesState.team_a_name} / SECOND:{' '}
+                      {seriesState.team_b_name}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setNextGameFirstTeam(seriesState.team_b_name)
+                      }
+                      className={`py-1.5 px-2.5 rounded-lg text-xs font-bold border transition-all ${
+                        nextGameFirstTeam === seriesState.team_b_name
+                          ? 'border-amber-400 bg-amber-500/20 text-amber-200'
+                          : 'border-slate-800 bg-slate-900 text-slate-400 hover:border-slate-700'
+                      }`}
+                    >
+                      FIRST: {seriesState.team_b_name} / SECOND:{' '}
+                      {seriesState.team_a_name}
+                    </button>
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={isSubmitting}
+                    onClick={() =>
+                      onDispatchBanPick({
+                        type: 'START_NEXT_GAME',
+                        nextFirstTeamName: nextGameFirstTeam,
+                        fearlessEnabled: nextGameFearless,
+                      })
+                    }
+                    className="w-full py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-extrabold transition-all disabled:opacity-50"
+                  >
+                    {seriesState.current_game + 1}세트 RoFS(진영/픽순서 선택) 시작하기 →
                   </button>
                 </div>
               </div>
@@ -999,8 +1096,8 @@ export default function BanPickDraftScreen({
           )}
         </section>
 
-        {/* 중앙 영역: 60초 라인 스왑 페이즈일 때는 스왑 컨트롤 보드를 표시, 그 외에는 챔피언 선택 그리드 표시 */}
-        <section className="lg:col-span-6 bg-slate-900/80 border border-slate-800 rounded-2xl p-3.5 flex flex-col justify-between h-[404px] md:h-[434px]">
+        {/* 중앙 영역: 챔피언 선택칸 및 60초 라인 스왑 보드 높이를 아래로 넉넉하게 확장 */}
+        <section className="lg:col-span-6 bg-slate-900/80 border border-slate-800 rounded-2xl p-4 flex flex-col justify-between h-[580px] md:h-[640px]">
           {inSwapPhase ? (
             /* ===============================================================
                [60초 라인 스왑 페이즈 전용 중앙 패널]
@@ -1214,6 +1311,34 @@ export default function BanPickDraftScreen({
                     </button>
                   ))}
                 </div>
+
+                {/* 하드 피어리스(Hard Fearless) 이전 세트 누적 사용 금지 챔피언 표시 바 */}
+                {seriesState.fearless_enabled && fearlessIds.size > 0 && (
+                  <div className="pt-2 border-t border-slate-800/80 flex flex-wrap items-center gap-1.5">
+                    <span className="text-[11px] font-extrabold text-rose-400 mr-1">
+                      🔥 피어리스 금지 ({fearlessIds.size}):
+                    </span>
+                    {Array.from(fearlessIds).map((fId) => {
+                      const fChamp = championMap.get(fId);
+                      return (
+                        <div
+                          key={`fearless-ban-${fId}`}
+                          className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-rose-950/50 border border-rose-800/60 text-[10px] text-rose-200"
+                          title={fChamp ? `${fChamp.name} (이전 세트 픽)` : fId}
+                        >
+                          {fChamp && (
+                            <img
+                              src={fChamp.imageUrl}
+                              alt={fChamp.name}
+                              className="w-4 h-4 rounded-sm object-cover grayscale"
+                            />
+                          )}
+                          <span>{fChamp ? fChamp.name : fId}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               {/* 챔피언 초상화 그리드 */}
@@ -1249,6 +1374,7 @@ export default function BanPickDraftScreen({
 
                     {filteredChampions.map((champ) => {
                       const isUnavailable = unavailableIds.has(champ.id);
+                      const isFearlessBanned = fearlessIds.has(champ.id);
                       const isHovered = bp?.hovered_champion_id === champ.id;
 
                       return (
@@ -1275,9 +1401,15 @@ export default function BanPickDraftScreen({
                               }`}
                             />
                             {isUnavailable && (
-                              <div className="absolute inset-0 bg-slate-950/70 flex items-center justify-center">
-                                <span className="text-[10px] font-black text-rose-400 uppercase">
-                                  불가
+                              <div className="absolute inset-0 bg-slate-950/75 flex items-center justify-center">
+                                <span
+                                  className={`text-[10px] font-black uppercase ${
+                                    isFearlessBanned
+                                      ? 'text-amber-400'
+                                      : 'text-rose-400'
+                                  }`}
+                                >
+                                  {isFearlessBanned ? '피어리스' : '불가'}
                                 </span>
                               </div>
                             )}

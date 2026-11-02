@@ -12,7 +12,17 @@ interface CsvRowPreview {
   match_id?: string;
 }
 
+const ADMIN_AUTH_STORAGE_KEY = 'lol_banpick_admin_authenticated';
+
 export default function AdminPage() {
+  // 관리자 암호 인증 상태
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [isCheckingAuth, setIsCheckingAuth] = useState<boolean>(true);
+  const [passwordInput, setPasswordInput] = useState<string>('');
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [isVerifyingPassword, setIsVerifyingPassword] =
+    useState<boolean>(false);
+
   const [matches, setMatches] = useState<MatchState[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
@@ -47,8 +57,51 @@ export default function AdminPage() {
   };
 
   useEffect(() => {
-    fetchMatches();
+    if (typeof window !== 'undefined') {
+      const savedAuth = window.sessionStorage.getItem(ADMIN_AUTH_STORAGE_KEY);
+      if (savedAuth === 'true') {
+        setIsAuthenticated(true);
+        fetchMatches();
+      }
+      setIsCheckingAuth(false);
+    }
   }, []);
+
+  const handlePasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError(null);
+    setIsVerifyingPassword(true);
+
+    try {
+      const res = await fetch('/api/admin/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: passwordInput }),
+      });
+      const data = await res.json();
+
+      if (res.ok && data?.ok) {
+        window.sessionStorage.setItem(ADMIN_AUTH_STORAGE_KEY, 'true');
+        setIsAuthenticated(true);
+        setPasswordInput('');
+        await fetchMatches();
+      } else {
+        setAuthError(data?.error || '관리자 암호가 올바르지 않습니다.');
+      }
+    } catch {
+      setAuthError('암호 확인 중 오류가 발생했습니다.');
+    } finally {
+      setIsVerifyingPassword(false);
+    }
+  };
+
+  const handleAdminLogout = () => {
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.removeItem(ADMIN_AUTH_STORAGE_KEY);
+    }
+    setIsAuthenticated(false);
+    setPasswordInput('');
+  };
 
   // 단일 경기 추가 핸들러
   const handleCreateSingleMatch = async (e: React.FormEvent) => {
@@ -107,7 +160,6 @@ export default function AdminPage() {
       const cols = line.split(',').map((c) => c.trim());
       if (cols.length < 2) return;
 
-      // 첫 줄이 헤더인 경우 건너뛰기
       if (
         idx === 0 &&
         (cols[0].includes('대회') ||
@@ -126,7 +178,6 @@ export default function AdminPage() {
           match_id: cols[4] || undefined,
         });
       } else if (cols.length === 2) {
-        // 팀1,팀2만 적은 경우도 허용
         rows.push({
           tournament_name: tournamentName || '공식 토너먼트',
           round_name: `Match ${idx + 1}`,
@@ -239,6 +290,75 @@ export default function AdminPage() {
     await fetchMatches();
   };
 
+  if (isCheckingAuth) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-300 flex items-center justify-center">
+        관리자 권한을 확인하는 중입니다...
+      </div>
+    );
+  }
+
+  // 암호 미인증 시 관리자 암호 입력 화면 표시
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex items-center justify-center p-6">
+        <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-2xl p-8 shadow-2xl space-y-6">
+          <div className="space-y-2 text-center">
+            <span className="text-xs font-bold uppercase tracking-widest px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
+              Admin Protected
+            </span>
+            <h1 className="text-2xl font-black text-white pt-2">
+              관리자(운영진) 암호 입력
+            </h1>
+            <p className="text-xs text-slate-400">
+              대진표 등록 및 경기 링크 발급 페이지에 접근하려면 운영진 암호를 입력하세요.
+            </p>
+          </div>
+
+          <form onSubmit={handlePasswordSubmit} className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
+                Admin Password
+              </label>
+              <input
+                type="password"
+                autoFocus
+                required
+                value={passwordInput}
+                onChange={(e) => setPasswordInput(e.target.value)}
+                placeholder="관리자 암호 입력"
+                className="w-full rounded-xl bg-slate-950 border border-slate-700 px-4 py-2.5 text-sm text-white focus:outline-none focus:border-amber-400"
+              />
+            </div>
+
+            {authError && (
+              <div className="rounded-xl bg-rose-950/60 border border-rose-500/50 p-3 text-xs text-rose-200 text-center font-medium">
+                {authError}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={isVerifyingPassword}
+              className="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-sm transition-all disabled:opacity-50"
+            >
+              {isVerifyingPassword ? '확인 중...' : '관리자 페이지 입장'}
+            </button>
+          </form>
+
+          <div className="pt-3 border-t border-slate-800 text-center">
+            <Link
+              href="/"
+              className="text-xs text-slate-400 hover:text-slate-200 font-semibold"
+            >
+              ← 메인 홈으로 돌아가기
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-6 md:p-10">
       <div className="max-w-6xl mx-auto space-y-8">
@@ -257,12 +377,21 @@ export default function AdminPage() {
             </p>
           </div>
 
-          <Link
-            href="/"
-            className="self-start sm:self-auto px-4 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs font-bold text-slate-300 hover:bg-slate-800"
-          >
-            ← 메인 홈으로
-          </Link>
+          <div className="flex items-center gap-2 self-start sm:self-auto">
+            <button
+              type="button"
+              onClick={handleAdminLogout}
+              className="px-3.5 py-2 rounded-xl bg-rose-950/60 hover:bg-rose-900/70 border border-rose-800/60 text-xs font-bold text-rose-200"
+            >
+              잠금 (로그아웃)
+            </button>
+            <Link
+              href="/"
+              className="px-4 py-2 rounded-xl bg-slate-900 border border-slate-700 text-xs font-bold text-slate-300 hover:bg-slate-800"
+            >
+              ← 메인 홈으로
+            </Link>
+          </div>
         </header>
 
         {/* 알림 메시지 */}
@@ -514,4 +643,3 @@ export default function AdminPage() {
     </div>
   );
 }
-

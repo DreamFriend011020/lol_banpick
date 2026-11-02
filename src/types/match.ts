@@ -44,9 +44,11 @@ export interface SeriesState {
   current_game: number;              // 현재 진행 중인 세트 번호 (1 ~ total_games)
   fearless_enabled: boolean;         // 하드 피어리스 룰 ON/OFF (이전 세트에서 픽된 모든 챔피언 금지)
   fearless_used_champions: string[]; // 이전 세트들에서 픽된 누적 챔피언 ID 목록
-  game_first_teams: string[];        // 각 세트별(인덱스 0 = 1세트) FIRST 권한을 가질 팀 이름 배열
-  team_a_name: string;               // 1번 고정 링크(?key=f1...)를 발급받은 기준 팀 이름
-  team_b_name: string;               // 2번 고정 링크(?key=s2...)를 발급받은 기준 팀 이름
+  fearless_picks_by_team?: Record<string, string[]>; // 각 팀별 이전 세트들에서 선택한 누적 챔피언 ID 목록
+  game_first_teams: string[];        // 각 세트별(인덱스 0 = 1세트) FIRST 권한을 가진 팀 기록
+  set_winners?: string[];            // 각 세트별 승리 팀 기록 (패배팀이 다음 세트 FIRST가 됨)
+  team_a_name: string;               // 1번 고정 링크(?key=f1...)를 발급받은 기준 팀 이름 (1세트 FIRST)
+  team_b_name: string;               // 2번 고정 링크(?key=s2...)를 발급받은 기준 팀 이름 (1세트 SECOND)
 }
 
 /**

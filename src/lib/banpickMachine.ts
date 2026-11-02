@@ -156,10 +156,16 @@ export function getSeriesState(match?: MatchState | null): SeriesState {
     fearless_used_champions: Array.isArray(raw?.fearless_used_champions)
       ? raw.fearless_used_champions
       : [],
+    fearless_picks_by_team:
+      raw?.fearless_picks_by_team &&
+      typeof raw.fearless_picks_by_team === 'object'
+        ? raw.fearless_picks_by_team
+        : {},
     game_first_teams:
       Array.isArray(raw?.game_first_teams) && raw.game_first_teams.length > 0
         ? raw.game_first_teams
         : defaultSchedule,
+    set_winners: Array.isArray(raw?.set_winners) ? raw.set_winners : [],
     team_a_name: teamA,
     team_b_name: teamB,
   };
@@ -178,6 +184,49 @@ export function getFearlessChampionIds(match?: MatchState | null): Set<string> {
       Boolean(id && id !== 'NO_BAN')
     )
   );
+}
+
+/**
+ * 특정 진영('BLUE' | 'RED')에 배정된 팀이 이전 세트들에서 픽했던 피어리스 금지 챔피언 ID 목록 반환
+ */
+export function getTeamFearlessChampionIds(
+  match: MatchState | null | undefined,
+  side: SideChoice
+): string[] {
+  if (!match) return [];
+  const series = getSeriesState(match);
+  if (!series.fearless_enabled) return [];
+
+  const teamName =
+    side === 'BLUE'
+      ? match.selected_side?.blue ?? match.team_first_name
+      : match.selected_side?.red ?? match.team_second_name;
+
+  const byTeam = series.fearless_picks_by_team ?? {};
+  const teamPicks = byTeam[teamName];
+  if (Array.isArray(teamPicks) && teamPicks.length > 0) {
+    return teamPicks.filter((id): id is string => Boolean(id && id !== 'NO_BAN'));
+  }
+
+  // 이전 버전 데이터 호환 폴백: 10개 단위(블루 5픽 + 레드 5픽)로 저장된 목록에서 분리
+  if (
+    Object.keys(byTeam).length === 0 &&
+    series.fearless_used_champions.length > 0
+  ) {
+    const result: string[] = [];
+    const isTeamA = teamName === series.team_a_name;
+    for (let i = 0; i < series.fearless_used_champions.length; i++) {
+      const posInSet = i % 10;
+      if (isTeamA && posInSet < 5) {
+        result.push(series.fearless_used_champions[i]);
+      } else if (!isTeamA && posInSet >= 5) {
+        result.push(series.fearless_used_champions[i]);
+      }
+    }
+    return result;
+  }
+
+  return [];
 }
 
 /**
@@ -262,16 +311,36 @@ export function transitionBanPickState(
   // 0-2. 다전제 다음 세트(Game N+1) 시작 및 FIRST/SECOND 배정 전환 액션
   if (action.type === 'START_NEXT_GAME') {
     const currentSeries = getSeriesState(state);
-    const currentPicks = state.banpick_state
-      ? [
-          ...state.banpick_state.blue_picks,
-          ...state.banpick_state.red_picks,
-        ].filter((id): id is string => Boolean(id && id !== 'NO_BAN'))
+    const prevBlueTeam = state.selected_side?.blue ?? state.team_first_name;
+    const prevRedTeam = state.selected_side?.red ?? state.team_second_name;
+
+    const bluePicks = state.banpick_state
+      ? state.banpick_state.blue_picks.filter((id): id is string =>
+          Boolean(id && id !== 'NO_BAN')
+        )
       : [];
+    const redPicks = state.banpick_state
+      ? state.banpick_state.red_picks.filter((id): id is string =>
+          Boolean(id && id !== 'NO_BAN')
+        )
+      : [];
+
+    const currentPicks = [...bluePicks, ...redPicks];
 
     const accumulatedFearless = Array.from(
       new Set([...currentSeries.fearless_used_champions, ...currentPicks])
     );
+
+    const prevTeamPicks = currentSeries.fearless_picks_by_team ?? {};
+    const updatedTeamPicks: Record<string, string[]> = {
+      ...prevTeamPicks,
+      [prevBlueTeam]: Array.from(
+        new Set([...(prevTeamPicks[prevBlueTeam] ?? []), ...bluePicks])
+      ),
+      [prevRedTeam]: Array.from(
+        new Set([...(prevTeamPicks[prevRedTeam] ?? []), ...redPicks])
+      ),
+    };
 
     const nextGameNum = currentSeries.current_game + 1;
     const nextTotalGames = Math.max(currentSeries.total_games, nextGameNum);
@@ -285,6 +354,10 @@ export function transitionBanPickState(
     const nextSchedule = [...currentSeries.game_first_teams];
     nextSchedule[nextGameNum - 1] = chosenFirst;
 
+    const nextWinners = [...(currentSeries.set_winners ?? [])];
+    // 이전 세트 승리 팀 기록 (패배팀이 chosenFirst이므로 승리 팀은 chosenSecond)
+    nextWinners[currentSeries.current_game - 1] = chosenSecond;
+
     const updatedSeries: SeriesState = {
       ...currentSeries,
       total_games: nextTotalGames,
@@ -294,7 +367,9 @@ export function transitionBanPickState(
           ? action.fearlessEnabled
           : currentSeries.fearless_enabled,
       fearless_used_champions: accumulatedFearless,
+      fearless_picks_by_team: updatedTeamPicks,
       game_first_teams: nextSchedule,
+      set_winners: nextWinners,
     };
 
     return {

@@ -1,3 +1,4 @@
+import { getTeamFearlessChampionIds } from './banpickMachine';
 import { ChampionInfo, MatchState } from '../types/match';
 
 const POSITION_LABELS = ['TOP', 'JGL', 'MID', 'BOT', 'SUP'];
@@ -254,9 +255,14 @@ export async function renderBanPickResultToDataUrl(
   // 3. 5:5 픽(PICKS) 섹션 렌더링
   const bluePicks = bp?.blue_picks ?? [null, null, null, null, null];
   const redPicks = bp?.red_picks ?? [null, null, null, null, null];
+  const blueFearless = getTeamFearlessChampionIds(match, 'BLUE');
+  const redFearless = getTeamFearlessChampionIds(match, 'RED');
+  const hasFearless = blueFearless.length > 0 || redFearless.length > 0;
 
-  const startY = 400;
-  const rowHeight = 122;
+  const startY = hasFearless ? 388 : 400;
+  const rowHeight = hasFearless ? 108 : 122;
+  const cardHeight = hasFearless ? 96 : 106;
+  const portraitSize = hasFearless ? 76 : 84;
   const cardWidth = 840;
 
   for (let i = 0; i < 5; i++) {
@@ -267,7 +273,7 @@ export async function renderBanPickResultToDataUrl(
     const bChamp = bChampId ? championMap.get(bChampId) : null;
     const bx = 60;
 
-    roundRectPath(ctx, bx, y, cardWidth, 106, 16);
+    roundRectPath(ctx, bx, y, cardWidth, cardHeight, 16);
     ctx.fillStyle = '#0f172a';
     ctx.fill();
     ctx.lineWidth = 2;
@@ -278,9 +284,9 @@ export async function renderBanPickResultToDataUrl(
       const img = await loadImage(bChamp.imageUrl);
       if (img) {
         ctx.save();
-        roundRectPath(ctx, bx + 12, y + 11, 84, 84, 12);
+        roundRectPath(ctx, bx + 12, y + 10, portraitSize, portraitSize, 12);
         ctx.clip();
-        ctx.drawImage(img, bx + 12, y + 11, 84, 84);
+        ctx.drawImage(img, bx + 12, y + 10, portraitSize, portraitSize);
         ctx.restore();
       }
     }
@@ -288,16 +294,16 @@ export async function renderBanPickResultToDataUrl(
     ctx.textAlign = 'left';
     ctx.fillStyle = '#60a5fa';
     ctx.font = 'bold 15px sans-serif';
-    ctx.fillText(`BLUE ${i + 1}픽 · ${POSITION_LABELS[i]}`, bx + 116, y + 38);
+    ctx.fillText(`BLUE ${i + 1}픽 · ${POSITION_LABELS[i]}`, bx + 108, y + 34);
 
     ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 28px sans-serif';
-    ctx.fillText(bChamp ? bChamp.name : '미선택', bx + 116, y + 72);
+    ctx.font = 'bold 26px sans-serif';
+    ctx.fillText(bChamp ? bChamp.name : '미선택', bx + 108, y + 66);
 
     if (bChamp) {
       ctx.fillStyle = '#94a3b8';
-      ctx.font = '15px sans-serif';
-      ctx.fillText(bChamp.title, bx + 116, y + 95);
+      ctx.font = '14px sans-serif';
+      ctx.fillText(bChamp.title, bx + 108, y + 87);
     }
 
     // --- 우측: 레드 픽 슬롯 ---
@@ -305,7 +311,7 @@ export async function renderBanPickResultToDataUrl(
     const rChamp = rChampId ? championMap.get(rChampId) : null;
     const rx = width - 60 - cardWidth;
 
-    roundRectPath(ctx, rx, y, cardWidth, 106, 16);
+    roundRectPath(ctx, rx, y, cardWidth, cardHeight, 16);
     ctx.fillStyle = '#0f172a';
     ctx.fill();
     ctx.lineWidth = 2;
@@ -316,9 +322,22 @@ export async function renderBanPickResultToDataUrl(
       const img = await loadImage(rChamp.imageUrl);
       if (img) {
         ctx.save();
-        roundRectPath(ctx, rx + cardWidth - 96, y + 11, 84, 84, 12);
+        roundRectPath(
+          ctx,
+          rx + cardWidth - 12 - portraitSize,
+          y + 10,
+          portraitSize,
+          portraitSize,
+          12
+        );
         ctx.clip();
-        ctx.drawImage(img, rx + cardWidth - 96, y + 11, 84, 84);
+        ctx.drawImage(
+          img,
+          rx + cardWidth - 12 - portraitSize,
+          y + 10,
+          portraitSize,
+          portraitSize
+        );
         ctx.restore();
       }
     }
@@ -328,23 +347,108 @@ export async function renderBanPickResultToDataUrl(
     ctx.font = 'bold 15px sans-serif';
     ctx.fillText(
       `RED ${i + 1}픽 · ${POSITION_LABELS[i]}`,
-      rx + cardWidth - 116,
-      y + 38
+      rx + cardWidth - 108,
+      y + 34
     );
 
     ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 28px sans-serif';
+    ctx.font = 'bold 26px sans-serif';
     ctx.fillText(
       rChamp ? rChamp.name : '미선택',
-      rx + cardWidth - 116,
-      y + 72
+      rx + cardWidth - 108,
+      y + 66
     );
 
     if (rChamp) {
       ctx.fillStyle = '#94a3b8';
-      ctx.font = '15px sans-serif';
-      ctx.fillText(rChamp.title, rx + cardWidth - 116, y + 95);
+      ctx.font = '14px sans-serif';
+      ctx.fillText(rChamp.title, rx + cardWidth - 108, y + 87);
     }
+  }
+
+  // 4. 하드 피어리스(전 세트 픽) 섹션: 각 팀 하단에 해당 팀이 이전 세트에서 선택한 챔피언 렌더링
+  if (hasFearless) {
+    const fy = 934;
+    const fh = 114;
+
+    const drawTeamFearlessBox = async (
+      boxX: number,
+      teamName: string,
+      champIds: string[],
+      borderColor: string,
+      isRightAlign: boolean
+    ) => {
+      roundRectPath(ctx, boxX, fy, cardWidth, fh, 14);
+      ctx.fillStyle = '#0f172a';
+      ctx.fill();
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = borderColor;
+      ctx.stroke();
+
+      ctx.fillStyle = '#fbbf24';
+      ctx.font = 'bold 14px sans-serif';
+      ctx.textAlign = isRightAlign ? 'right' : 'left';
+      ctx.fillText(
+        `FEARLESS BAN (${teamName} 전 세트 픽 · ${champIds.length}명)`,
+        isRightAlign ? boxX + cardWidth - 16 : boxX + 16,
+        fy + 24
+      );
+
+      for (let idx = 0; idx < Math.min(champIds.length, 20); idx++) {
+        const cId = champIds[idx];
+        const champ = championMap.get(cId);
+        const iconSize = 48;
+        const gap = 8;
+        const ix = isRightAlign
+          ? boxX + cardWidth - 16 - iconSize - idx * (iconSize + gap)
+          : boxX + 16 + idx * (iconSize + gap);
+        const iy = fy + 34;
+
+        roundRectPath(ctx, ix, iy, iconSize, iconSize, 8);
+        ctx.fillStyle = '#020617';
+        ctx.fill();
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = '#334155';
+        ctx.stroke();
+
+        if (champ) {
+          const img = await loadImage(champ.imageUrl);
+          if (img) {
+            ctx.save();
+            roundRectPath(ctx, ix + 1, iy + 1, iconSize - 2, iconSize - 2, 7);
+            ctx.clip();
+            ctx.filter = 'grayscale(80%)';
+            ctx.drawImage(img, ix + 1, iy + 1, iconSize - 2, iconSize - 2);
+            ctx.restore();
+          }
+        }
+
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(ix + 6, iy + 6);
+        ctx.lineTo(ix + iconSize - 6, iy + iconSize - 6);
+        ctx.stroke();
+
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#cbd5e1';
+        ctx.font = 'bold 11px sans-serif';
+        ctx.fillText(
+          champ ? champ.name.slice(0, 4) : cId.slice(0, 4),
+          ix + iconSize / 2,
+          iy + iconSize + 16
+        );
+      }
+    };
+
+    await drawTeamFearlessBox(60, blueTeam, blueFearless, '#1e3a8a', false);
+    await drawTeamFearlessBox(
+      width - 60 - cardWidth,
+      redTeam,
+      redFearless,
+      '#881337',
+      true
+    );
   }
 
   return canvas.toDataURL('image/png');

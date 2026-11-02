@@ -11,6 +11,7 @@ import {
   getCurrentTurnStep,
   getFearlessChampionIds,
   getSeriesState,
+  getTeamFearlessChampionIds,
   getUnavailableChampionIds,
   isInSwapPhase,
   resolveViewerSide,
@@ -111,6 +112,14 @@ export default function BanPickDraftScreen({
   const bp = match.banpick_state;
   const seriesState = useMemo(() => getSeriesState(match), [match]);
   const fearlessIds = useMemo(() => getFearlessChampionIds(match), [match]);
+  const blueFearlessPicks = useMemo(
+    () => getTeamFearlessChampionIds(match, 'BLUE'),
+    [match]
+  );
+  const redFearlessPicks = useMemo(
+    () => getTeamFearlessChampionIds(match, 'RED'),
+    [match]
+  );
   const inSwapPhase = isInSwapPhase(match);
   const currentStep = useMemo(
     () => getCurrentTurnStep(bp, match),
@@ -725,6 +734,99 @@ export default function BanPickDraftScreen({
     );
   };
 
+  // 각 팀 하단: 해당 팀이 이전 세트에서 픽한 하드 피어리스 금지 챔피언 목록 렌더링
+  const renderTeamFearlessSection = (side: SideChoice) => {
+    if (!seriesState.fearless_enabled) return null;
+
+    const isBlue = side === 'BLUE';
+    const teamName = isBlue ? blueTeamName : redTeamName;
+    const teamFearlessIds = isBlue ? blueFearlessPicks : redFearlessPicks;
+
+    // 5개 단위(세트별)로 행 분리
+    const setRows: string[][] = [];
+    for (let i = 0; i < teamFearlessIds.length; i += 5) {
+      setRows.push(teamFearlessIds.slice(i, i + 5));
+    }
+
+    return (
+      <div
+        className={`mt-1.5 rounded-xl border p-2.5 bg-slate-900/85 ${
+          isBlue ? 'border-blue-500/30' : 'border-rose-500/30'
+        }`}
+      >
+        <div
+          className={`flex items-center justify-between gap-1.5 mb-2 ${
+            isBlue ? 'flex-row' : 'flex-row-reverse'
+          }`}
+        >
+          <span className="text-[11px] font-extrabold text-amber-300 flex items-center gap-1">
+            🔥 {teamName} 피어리스 금지 (전 세트 픽)
+          </span>
+          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-950 border border-slate-800 text-slate-400">
+            {teamFearlessIds.length}명
+          </span>
+        </div>
+
+        {setRows.length === 0 ? (
+          <div className="py-2.5 text-center text-[11px] text-slate-500 bg-slate-950/60 rounded-lg border border-slate-800/60">
+            이전 세트에서 선택한 챔피언 없음 (2세트부터 누적 표시)
+          </div>
+        ) : (
+          <div className="space-y-1.5">
+            {setRows.map((rowChamps, setIdx) => (
+              <div
+                key={`${side}-fearless-set-${setIdx}`}
+                className={`flex items-center gap-1.5 ${
+                  isBlue ? 'flex-row' : 'flex-row-reverse'
+                }`}
+              >
+                <span className="text-[10px] font-extrabold text-slate-400 w-9 text-center flex-shrink-0 bg-slate-950/90 py-1 rounded border border-slate-800">
+                  {setIdx + 1}세트
+                </span>
+                <div className="grid grid-cols-5 gap-1 flex-1">
+                  {rowChamps.map((champId) => {
+                    const champ = championMap.get(champId);
+                    return (
+                      <div
+                        key={`${side}-fearless-${champId}`}
+                        className="relative flex flex-col items-center bg-slate-950/90 rounded-lg p-1 border border-slate-800 overflow-hidden"
+                        title={
+                          champ
+                            ? `${champ.name} (${setIdx + 1}세트 ${teamName} 픽)`
+                            : champId
+                        }
+                      >
+                        <div className="relative w-9 h-9 rounded overflow-hidden bg-slate-900">
+                          {champ ? (
+                            <img
+                              src={champ.imageUrl}
+                              alt={champ.name}
+                              className="w-full h-full object-cover grayscale opacity-75"
+                            />
+                          ) : (
+                            <span className="text-[9px] text-slate-500 flex items-center justify-center h-full">
+                              {champId}
+                            </span>
+                          )}
+                          <div className="absolute inset-0 flex items-center justify-center bg-rose-950/25">
+                            <div className="w-full h-0.5 bg-rose-500/80 rotate-45" />
+                          </div>
+                        </div>
+                        <span className="text-[9px] font-bold text-slate-300 truncate w-full text-center mt-0.5">
+                          {champ ? champ.name : champId}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const maxTimerDuration = inSwapPhase
     ? SWAP_DURATION_SECONDS
     : TURN_DURATION_SECONDS;
@@ -968,15 +1070,12 @@ export default function BanPickDraftScreen({
                   </button>
                 </div>
 
-                {/* 다전제 / 추가 스크림 다음 세트(Game N+1) 설정 및 시작 컨트롤 */}
+                {/* 다전제 / 추가 스크림 다음 세트(Game N+1) 패배팀 -> FIRST 자동 배정 및 시작 컨트롤 */}
                 <div className="w-full max-w-lg mt-1 rounded-xl bg-slate-950/90 border border-amber-500/40 p-3 space-y-2.5 text-left">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-extrabold text-amber-300">
-                      다음 세트 ({seriesState.current_game + 1}세트
-                      {seriesState.total_games > 1
-                        ? ` / 총 ${seriesState.total_games}세트`
-                        : ' · 추가 세트'}
-                      ) 진행 설정
+                      {seriesState.current_game}세트 인게임 결과 선택 (패배팀 →{' '}
+                      {seriesState.current_game + 1}세트 FIRST 팀)
                     </span>
                     <button
                       type="button"
@@ -991,34 +1090,54 @@ export default function BanPickDraftScreen({
                     </button>
                   </div>
 
+                  <p className="text-[11px] text-slate-400">
+                    인게임 세트가 끝난 뒤 <strong>이번 세트 패배팀</strong>을 선택하세요. 패배팀이 다음 세트 <strong>FIRST(선결정권)</strong>, 승리팀이 <strong>SECOND(후결정권)</strong>로 자동 배정됩니다.
+                  </p>
+
                   <div className="grid grid-cols-2 gap-2">
                     <button
                       type="button"
                       onClick={() =>
                         setNextGameFirstTeam(seriesState.team_a_name)
                       }
-                      className={`py-1.5 px-2.5 rounded-lg text-xs font-bold border transition-all ${
+                      className={`py-2 px-2.5 rounded-lg text-xs font-bold border transition-all text-left ${
                         nextGameFirstTeam === seriesState.team_a_name
-                          ? 'border-amber-400 bg-amber-500/20 text-amber-200'
+                          ? 'border-amber-400 bg-amber-500/20 text-amber-200 ring-1 ring-amber-400/50'
                           : 'border-slate-800 bg-slate-900 text-slate-400 hover:border-slate-700'
                       }`}
                     >
-                      FIRST: {seriesState.team_a_name} / SECOND:{' '}
-                      {seriesState.team_b_name}
+                      <div className="text-[11px] text-rose-300 font-extrabold">
+                        {seriesState.current_game}세트 패배: {seriesState.team_a_name}{' '}
+                        <span className="text-slate-400 font-normal">
+                          ({seriesState.team_b_name} 승)
+                        </span>
+                      </div>
+                      <div className="mt-0.5 text-amber-300 font-black">
+                        → {seriesState.current_game + 1}세트 FIRST:{' '}
+                        {seriesState.team_a_name}
+                      </div>
                     </button>
                     <button
                       type="button"
                       onClick={() =>
                         setNextGameFirstTeam(seriesState.team_b_name)
                       }
-                      className={`py-1.5 px-2.5 rounded-lg text-xs font-bold border transition-all ${
+                      className={`py-2 px-2.5 rounded-lg text-xs font-bold border transition-all text-left ${
                         nextGameFirstTeam === seriesState.team_b_name
-                          ? 'border-amber-400 bg-amber-500/20 text-amber-200'
+                          ? 'border-amber-400 bg-amber-500/20 text-amber-200 ring-1 ring-amber-400/50'
                           : 'border-slate-800 bg-slate-900 text-slate-400 hover:border-slate-700'
                       }`}
                     >
-                      FIRST: {seriesState.team_b_name} / SECOND:{' '}
-                      {seriesState.team_a_name}
+                      <div className="text-[11px] text-rose-300 font-extrabold">
+                        {seriesState.current_game}세트 패배: {seriesState.team_b_name}{' '}
+                        <span className="text-slate-400 font-normal">
+                          ({seriesState.team_a_name} 승)
+                        </span>
+                      </div>
+                      <div className="mt-0.5 text-amber-300 font-black">
+                        → {seriesState.current_game + 1}세트 FIRST:{' '}
+                        {seriesState.team_b_name}
+                      </div>
                     </button>
                   </div>
 
@@ -1034,7 +1153,8 @@ export default function BanPickDraftScreen({
                     }
                     className="w-full py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-extrabold transition-all disabled:opacity-50"
                   >
-                    {seriesState.current_game + 1}세트 RoFS(진영/픽순서 선택) 시작하기 →
+                    패배팀({nextGameFirstTeam})을 FIRST로 하여{' '}
+                    {seriesState.current_game + 1}세트 RoFS 시작하기 →
                   </button>
                 </div>
               </div>
@@ -1085,7 +1205,7 @@ export default function BanPickDraftScreen({
           2. 메인 본문: 좌측 블루 5픽 / 중앙(챔피언 그리드 또는 60초 라인스왑 패널) / 우측 레드 5픽
       ===================================================================== */}
       <main className="max-w-[1340px] w-full mx-auto my-1 grid grid-cols-1 lg:grid-cols-12 gap-2.5 items-start">
-        {/* 좌측: 블루 진영 5인 픽 슬롯 (간격 밀착) */}
+        {/* 좌측: 블루 진영 5인 픽 슬롯 + 블루 팀 전 세트 픽(피어리스 금지) */}
         <section className="lg:col-span-3 flex flex-col justify-start gap-1.5">
           {[0, 1, 2, 3, 4].map((slotIdx) =>
             renderPickSlot(
@@ -1094,6 +1214,7 @@ export default function BanPickDraftScreen({
               bp ? bp.blue_picks[slotIdx] : null
             )
           )}
+          {renderTeamFearlessSection('BLUE')}
         </section>
 
         {/* 중앙 영역: 챔피언 선택칸 및 60초 라인 스왑 보드 높이를 아래로 넉넉하게 확장 */}
@@ -1311,34 +1432,6 @@ export default function BanPickDraftScreen({
                     </button>
                   ))}
                 </div>
-
-                {/* 하드 피어리스(Hard Fearless) 이전 세트 누적 사용 금지 챔피언 표시 바 */}
-                {seriesState.fearless_enabled && fearlessIds.size > 0 && (
-                  <div className="pt-2 border-t border-slate-800/80 flex flex-wrap items-center gap-1.5">
-                    <span className="text-[11px] font-extrabold text-rose-400 mr-1">
-                      🔥 피어리스 금지 ({fearlessIds.size}):
-                    </span>
-                    {Array.from(fearlessIds).map((fId) => {
-                      const fChamp = championMap.get(fId);
-                      return (
-                        <div
-                          key={`fearless-ban-${fId}`}
-                          className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-rose-950/50 border border-rose-800/60 text-[10px] text-rose-200"
-                          title={fChamp ? `${fChamp.name} (이전 세트 픽)` : fId}
-                        >
-                          {fChamp && (
-                            <img
-                              src={fChamp.imageUrl}
-                              alt={fChamp.name}
-                              className="w-4 h-4 rounded-sm object-cover grayscale"
-                            />
-                          )}
-                          <span>{fChamp ? fChamp.name : fId}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
               </div>
 
               {/* 챔피언 초상화 그리드 */}
@@ -1501,11 +1594,12 @@ export default function BanPickDraftScreen({
           )}
         </section>
 
-        {/* 우측: 레드 진영 5인 픽 슬롯 (간격 밀착) */}
+        {/* 우측: 레드 진영 5인 픽 슬롯 + 레드 팀 전 세트 픽(피어리스 금지) */}
         <section className="lg:col-span-3 flex flex-col justify-start gap-1.5">
           {[0, 1, 2, 3, 4].map((slotIdx) =>
             renderPickSlot('RED', slotIdx, bp ? bp.red_picks[slotIdx] : null)
           )}
+          {renderTeamFearlessSection('RED')}
         </section>
       </main>
     </div>

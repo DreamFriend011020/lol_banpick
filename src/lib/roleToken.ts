@@ -66,3 +66,4 @@ export function buildMatchRolePath(
   const key = generateRoleKey(matchId, role);
   return `/match/${encodeURIComponent(matchId)}?key=${encodeURIComponent(key)}`;
 }
+

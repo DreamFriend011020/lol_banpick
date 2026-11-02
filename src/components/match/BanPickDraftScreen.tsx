@@ -708,11 +708,11 @@ export default function BanPickDraftScreen({
   );
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-between p-3 md:p-6 select-none">
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-start gap-2.5 p-2.5 md:p-4 select-none">
       {/* =====================================================================
           1. 상단 헤더: 좌측 블루 진영 / 중앙 타이머 & 턴 표시 / 우측 레드 진영
       ===================================================================== */}
-      <header className="max-w-[1600px] w-full mx-auto space-y-3">
+      <header className="max-w-[1340px] w-full mx-auto space-y-2">
         {match.rofs_submissions?.first_choice &&
           match.rofs_submissions?.second_choice && (
             <div className="rounded-xl bg-slate-900/80 border border-slate-800 px-4 py-2 text-xs text-slate-300 flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
@@ -987,9 +987,9 @@ export default function BanPickDraftScreen({
       {/* =====================================================================
           2. 메인 본문: 좌측 블루 5픽 / 중앙(챔피언 그리드 또는 60초 라인스왑 패널) / 우측 레드 5픽
       ===================================================================== */}
-      <main className="max-w-[1600px] w-full mx-auto my-4 grid grid-cols-1 lg:grid-cols-12 gap-4 flex-1 items-stretch">
-        {/* 좌측: 블루 진영 5인 픽 슬롯 */}
-        <section className="lg:col-span-3 flex flex-col justify-between space-y-2.5">
+      <main className="max-w-[1340px] w-full mx-auto my-1 grid grid-cols-1 lg:grid-cols-12 gap-2.5 items-start">
+        {/* 좌측: 블루 진영 5인 픽 슬롯 (간격 밀착) */}
+        <section className="lg:col-span-3 flex flex-col justify-start gap-1.5">
           {[0, 1, 2, 3, 4].map((slotIdx) =>
             renderPickSlot(
               'BLUE',
@@ -1000,7 +1000,7 @@ export default function BanPickDraftScreen({
         </section>
 
         {/* 중앙 영역: 60초 라인 스왑 페이즈일 때는 스왑 컨트롤 보드를 표시, 그 외에는 챔피언 선택 그리드 표시 */}
-        <section className="lg:col-span-6 bg-slate-900/80 border border-slate-800 rounded-2xl p-4 flex flex-col justify-between h-[560px] md:h-[600px]">
+        <section className="lg:col-span-6 bg-slate-900/80 border border-slate-800 rounded-2xl p-3.5 flex flex-col justify-between h-[404px] md:h-[434px]">
           {inSwapPhase ? (
             /* ===============================================================
                [60초 라인 스왑 페이즈 전용 중앙 패널]
@@ -1369,8 +1369,8 @@ export default function BanPickDraftScreen({
           )}
         </section>
 
-        {/* 우측: 레드 진영 5인 픽 슬롯 */}
-        <section className="lg:col-span-3 flex flex-col justify-between space-y-2.5">
+        {/* 우측: 레드 진영 5인 픽 슬롯 (간격 밀착) */}
+        <section className="lg:col-span-3 flex flex-col justify-start gap-1.5">
           {[0, 1, 2, 3, 4].map((slotIdx) =>
             renderPickSlot('RED', slotIdx, bp ? bp.red_picks[slotIdx] : null)
           )}

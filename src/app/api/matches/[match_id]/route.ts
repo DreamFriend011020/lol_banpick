@@ -87,15 +87,34 @@ export async function PATCH(
         body.drive_webhook_url !== undefined
           ? body.drive_webhook_url
           : existing?.drive_webhook_url,
+      series_state:
+        body.series_state !== undefined
+          ? body.series_state
+          : body.rofs_submissions?.series_state ?? existing?.series_state,
       created_at: existing?.created_at ?? new Date().toISOString(),
     };
 
     await upsertMatchesToStore([updated]).catch(() => {});
 
     if (supabase && !body.skipSupabase) {
-      await supabase
+      const { error } = await supabase
         .from('matches')
         .upsert(updated, { onConflict: 'match_id' });
+
+      if (error) {
+        await supabase
+          .from('matches')
+          .update({
+            team_first_name: updated.team_first_name,
+            team_second_name: updated.team_second_name,
+            status: updated.status,
+            selected_side: updated.selected_side,
+            pick_turn: updated.pick_turn,
+            rofs_submissions: updated.rofs_submissions ?? null,
+            banpick_state: updated.banpick_state ?? null,
+          })
+          .eq('match_id', matchId);
+      }
     }
 
     return NextResponse.json({ ok: true, match: updated });

@@ -65,6 +65,56 @@ export default function BanPickDraftScreen({
     match.drive_folder_id ?? ''
   );
 
+  // 관리자(운영진) 인증 여부 (실제 경기에서 관리자만 세트 승패를 결정하고 다음 세트를 시작하도록 제한)
+  const [isAdminVerified, setIsAdminVerified] = useState<boolean>(false);
+  const [showAdminUnlockInput, setShowAdminUnlockInput] =
+    useState<boolean>(false);
+  const [adminPasswordInput, setAdminPasswordInput] = useState<string>('');
+  const [adminAuthError, setAdminAuthError] = useState<string | null>(null);
+  const [isVerifyingAdmin, setIsVerifyingAdmin] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const saved = window.sessionStorage.getItem(
+        'lol_banpick_admin_authenticated'
+      );
+      if (saved === 'true') {
+        setIsAdminVerified(true);
+      }
+    }
+  }, []);
+
+  const handleVerifyAdminInMatch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAdminAuthError(null);
+    setIsVerifyingAdmin(true);
+    try {
+      const res = await fetch('/api/admin/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: adminPasswordInput }),
+      });
+      const data = await res.json();
+      if (res.ok && data?.ok) {
+        if (typeof window !== 'undefined') {
+          window.sessionStorage.setItem(
+            'lol_banpick_admin_authenticated',
+            'true'
+          );
+        }
+        setIsAdminVerified(true);
+        setShowAdminUnlockInput(false);
+        setAdminPasswordInput('');
+      } else {
+        setAdminAuthError(data?.error || '관리자 암호가 일치하지 않습니다.');
+      }
+    } catch {
+      setAdminAuthError('암호 확인 중 오류가 발생했습니다.');
+    } finally {
+      setIsVerifyingAdmin(false);
+    }
+  };
+
   // 60초 라인 스왑 페이즈에서 첫 번째로 클릭한 슬롯 인덱스 (0~4)
   const [selectedSwapSlot, setSelectedSwapSlot] = useState<number | null>(null);
 
@@ -1070,93 +1120,151 @@ export default function BanPickDraftScreen({
                   </button>
                 </div>
 
-                {/* 다전제 / 추가 스크림 다음 세트(Game N+1) 패배팀 -> FIRST 자동 배정 및 시작 컨트롤 */}
-                <div className="w-full max-w-lg mt-1 rounded-xl bg-slate-950/90 border border-amber-500/40 p-3 space-y-2.5 text-left">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-extrabold text-amber-300">
-                      {seriesState.current_game}세트 인게임 결과 선택 (패배팀 →{' '}
-                      {seriesState.current_game + 1}세트 FIRST 팀)
-                    </span>
+                {/* 다전제 다음 세트(Game N+1) 패배팀 -> FIRST 자동 배정 및 시작 컨트롤 (관리자 전용) */}
+                {isAdminVerified ? (
+                  <div className="w-full max-w-lg mt-1 rounded-xl bg-slate-950/90 border border-amber-500/40 p-3 space-y-2.5 text-left">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-extrabold text-amber-300">
+                        👑 [관리자 전용] {seriesState.current_game}세트 승패 확정
+                        (패배팀 → {seriesState.current_game + 1}세트 FIRST)
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setNextGameFearless((prev) => !prev)}
+                        className={`px-2.5 py-0.5 rounded text-[11px] font-extrabold border transition-colors ${
+                          nextGameFearless
+                            ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                            : 'bg-slate-800 text-slate-400 border-slate-700'
+                        }`}
+                      >
+                        🔥 하드 피어리스: {nextGameFearless ? 'ON' : 'OFF'}
+                      </button>
+                    </div>
+
+                    <p className="text-[11px] text-slate-400">
+                      인게임 세트가 끝난 뒤 <strong>이번 세트 패배팀</strong>을 선택하세요. 패배팀이 다음 세트 <strong>FIRST(선결정권)</strong>, 승리팀이 <strong>SECOND(후결정권)</strong>로 자동 배정됩니다.
+                    </p>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setNextGameFirstTeam(seriesState.team_a_name)
+                        }
+                        className={`py-2 px-2.5 rounded-lg text-xs font-bold border transition-all text-left ${
+                          nextGameFirstTeam === seriesState.team_a_name
+                            ? 'border-amber-400 bg-amber-500/20 text-amber-200 ring-1 ring-amber-400/50'
+                            : 'border-slate-800 bg-slate-900 text-slate-400 hover:border-slate-700'
+                        }`}
+                      >
+                        <div className="text-[11px] text-rose-300 font-extrabold">
+                          {seriesState.current_game}세트 패배: {seriesState.team_a_name}{' '}
+                          <span className="text-slate-400 font-normal">
+                            ({seriesState.team_b_name} 승)
+                          </span>
+                        </div>
+                        <div className="mt-0.5 text-amber-300 font-black">
+                          → {seriesState.current_game + 1}세트 FIRST:{' '}
+                          {seriesState.team_a_name}
+                        </div>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setNextGameFirstTeam(seriesState.team_b_name)
+                        }
+                        className={`py-2 px-2.5 rounded-lg text-xs font-bold border transition-all text-left ${
+                          nextGameFirstTeam === seriesState.team_b_name
+                            ? 'border-amber-400 bg-amber-500/20 text-amber-200 ring-1 ring-amber-400/50'
+                            : 'border-slate-800 bg-slate-900 text-slate-400 hover:border-slate-700'
+                        }`}
+                      >
+                        <div className="text-[11px] text-rose-300 font-extrabold">
+                          {seriesState.current_game}세트 패배: {seriesState.team_b_name}{' '}
+                          <span className="text-slate-400 font-normal">
+                            ({seriesState.team_a_name} 승)
+                          </span>
+                        </div>
+                        <div className="mt-0.5 text-amber-300 font-black">
+                          → {seriesState.current_game + 1}세트 FIRST:{' '}
+                          {seriesState.team_b_name}
+                        </div>
+                      </button>
+                    </div>
+
                     <button
                       type="button"
-                      onClick={() => setNextGameFearless((prev) => !prev)}
-                      className={`px-2.5 py-0.5 rounded text-[11px] font-extrabold border transition-colors ${
-                        nextGameFearless
-                          ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
-                          : 'bg-slate-800 text-slate-400 border-slate-700'
-                      }`}
+                      disabled={isSubmitting}
+                      onClick={() =>
+                        onDispatchBanPick({
+                          type: 'START_NEXT_GAME',
+                          nextFirstTeamName: nextGameFirstTeam,
+                          fearlessEnabled: nextGameFearless,
+                        })
+                      }
+                      className="w-full py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-extrabold transition-all disabled:opacity-50"
                     >
-                      🔥 하드 피어리스: {nextGameFearless ? 'ON' : 'OFF'}
+                      패배팀({nextGameFirstTeam})을 FIRST로 확정하고{' '}
+                      {seriesState.current_game + 1}세트 RoFS 시작하기 →
                     </button>
                   </div>
-
-                  <p className="text-[11px] text-slate-400">
-                    인게임 세트가 끝난 뒤 <strong>이번 세트 패배팀</strong>을 선택하세요. 패배팀이 다음 세트 <strong>FIRST(선결정권)</strong>, 승리팀이 <strong>SECOND(후결정권)</strong>로 자동 배정됩니다.
-                  </p>
-
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setNextGameFirstTeam(seriesState.team_a_name)
-                      }
-                      className={`py-2 px-2.5 rounded-lg text-xs font-bold border transition-all text-left ${
-                        nextGameFirstTeam === seriesState.team_a_name
-                          ? 'border-amber-400 bg-amber-500/20 text-amber-200 ring-1 ring-amber-400/50'
-                          : 'border-slate-800 bg-slate-900 text-slate-400 hover:border-slate-700'
-                      }`}
-                    >
-                      <div className="text-[11px] text-rose-300 font-extrabold">
-                        {seriesState.current_game}세트 패배: {seriesState.team_a_name}{' '}
-                        <span className="text-slate-400 font-normal">
-                          ({seriesState.team_b_name} 승)
-                        </span>
-                      </div>
-                      <div className="mt-0.5 text-amber-300 font-black">
-                        → {seriesState.current_game + 1}세트 FIRST:{' '}
-                        {seriesState.team_a_name}
-                      </div>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setNextGameFirstTeam(seriesState.team_b_name)
-                      }
-                      className={`py-2 px-2.5 rounded-lg text-xs font-bold border transition-all text-left ${
-                        nextGameFirstTeam === seriesState.team_b_name
-                          ? 'border-amber-400 bg-amber-500/20 text-amber-200 ring-1 ring-amber-400/50'
-                          : 'border-slate-800 bg-slate-900 text-slate-400 hover:border-slate-700'
-                      }`}
-                    >
-                      <div className="text-[11px] text-rose-300 font-extrabold">
-                        {seriesState.current_game}세트 패배: {seriesState.team_b_name}{' '}
-                        <span className="text-slate-400 font-normal">
-                          ({seriesState.team_a_name} 승)
-                        </span>
-                      </div>
-                      <div className="mt-0.5 text-amber-300 font-black">
-                        → {seriesState.current_game + 1}세트 FIRST:{' '}
-                        {seriesState.team_b_name}
-                      </div>
-                    </button>
+                ) : (
+                  <div className="w-full max-w-lg mt-1 rounded-xl bg-slate-950/90 border border-slate-800 p-3 space-y-2 text-center">
+                    <div className="text-xs font-extrabold text-amber-300">
+                      🔒 다음 세트 진행 대기 중 (관리자 전용 승패 결정)
+                    </div>
+                    <p className="text-[11px] text-slate-400">
+                      인게임 경기가 끝난 후 <strong>관리자(운영진)</strong>가 이번 세트의 승패 결과를 확정하면, 패배팀이 다음 세트 FIRST 팀으로 배정되어 자동으로 다음 세트 RoFS 화면이 시작됩니다.
+                    </p>
+                    {!showAdminUnlockInput ? (
+                      <button
+                        type="button"
+                        onClick={() => setShowAdminUnlockInput(true)}
+                        className="px-3 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-[11px] font-bold text-slate-300 transition-colors"
+                      >
+                        🔑 운영진(관리자) 암호로 승패 결정 권한 열기
+                      </button>
+                    ) : (
+                      <form
+                        onSubmit={handleVerifyAdminInMatch}
+                        className="flex flex-col sm:flex-row items-center justify-center gap-1.5 pt-1"
+                      >
+                        <input
+                          type="password"
+                          required
+                          value={adminPasswordInput}
+                          onChange={(e) =>
+                            setAdminPasswordInput(e.target.value)
+                          }
+                          placeholder="관리자 암호 입력"
+                          className="rounded-lg bg-slate-900 border border-slate-700 px-2.5 py-1 text-xs text-white focus:outline-none focus:border-amber-400"
+                        />
+                        <button
+                          type="submit"
+                          disabled={isVerifyingAdmin}
+                          className="px-3 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-extrabold"
+                        >
+                          {isVerifyingAdmin ? '확인 중...' : '인증'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowAdminUnlockInput(false);
+                            setAdminAuthError(null);
+                          }}
+                          className="px-2 py-1 rounded-lg bg-slate-800 text-xs text-slate-400"
+                        >
+                          취소
+                        </button>
+                        {adminAuthError && (
+                          <span className="text-[11px] text-rose-400 block w-full">
+                            {adminAuthError}
+                          </span>
+                        )}
+                      </form>
+                    )}
                   </div>
-
-                  <button
-                    type="button"
-                    disabled={isSubmitting}
-                    onClick={() =>
-                      onDispatchBanPick({
-                        type: 'START_NEXT_GAME',
-                        nextFirstTeamName: nextGameFirstTeam,
-                        fearlessEnabled: nextGameFearless,
-                      })
-                    }
-                    className="w-full py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-extrabold transition-all disabled:opacity-50"
-                  >
-                    패배팀({nextGameFirstTeam})을 FIRST로 하여{' '}
-                    {seriesState.current_game + 1}세트 RoFS 시작하기 →
-                  </button>
-                </div>
+                )}
               </div>
             )}
           </div>

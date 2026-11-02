@@ -4,14 +4,22 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { MatchState } from '../../types/match';
 import { buildMatchRolePath, InviteRole } from '../../lib/roleToken';
+import {
+  getSeriesState,
+  transitionBanPickState,
+} from '../../lib/banpickMachine';
+import { supabase } from '../../lib/supabaseClient';
 
 interface CsvRowPreview {
   tournament_name: string;
   round_name: string;
   team_first_name: string;
   team_second_name: string;
+  total_games: number;
+  fearless_enabled: boolean;
   match_id?: string;
   auto_save_enabled?: boolean;
+  drive_folder_id?: string;
 }
 
 const ADMIN_AUTH_STORAGE_KEY = 'lol_banpick_admin_authenticated';
@@ -163,12 +171,36 @@ export default function AdminPage() {
     }
   };
 
-  // CSV 파싱 헬퍼 (형식: 대회명,라운드,FIRST팀,SECOND팀[,match_id])
+  // CSV 파싱 헬퍼
+  // 권장 형식: 대회명,라운드,1세트FIRST팀,1세트SECOND팀,진행판수(1~5),피어리스(ON/OFF),고유ID(선택),드라이브폴더ID(선택)
+  // (하위 호환: 대회명,라운드,FIRST팀,SECOND팀[,고유ID] 또는 FIRST팀,SECOND팀 형식도 자동 인식)
   const parseCsvContent = (raw: string): CsvRowPreview[] => {
     const lines = raw
       .split(/\r?\n/)
       .map((l) => l.trim())
       .filter(Boolean);
+
+    const parseGamesCount = (val?: string): number | null => {
+      if (!val) return null;
+      const cleaned = val.trim().toLowerCase().replace(/^bo/, '').replace(/판$/, '');
+      const num = Number(cleaned);
+      if (Number.isInteger(num) && num >= 1 && num <= 5) {
+        return num;
+      }
+      return null;
+    };
+
+    const parseFearlessFlag = (val?: string): boolean => {
+      if (!val) return fearlessEnabled;
+      const v = val.trim().toLowerCase();
+      if (['on', 'true', 'y', 'yes', '1', '사용', '피어리스'].includes(v)) {
+        return true;
+      }
+      if (['off', 'false', 'n', 'no', '0', '미사용', '일반'].includes(v)) {
+        return false;
+      }
+      return fearlessEnabled;
+    };
 
     const rows: CsvRowPreview[] = [];
     lines.forEach((line, idx) => {
@@ -179,26 +211,50 @@ export default function AdminPage() {
         idx === 0 &&
         (cols[0].includes('대회') ||
           cols[0].toLowerCase().includes('tournament') ||
-          cols[2]?.toLowerCase().includes('first'))
+          cols[2]?.toLowerCase().includes('first') ||
+          cols[4]?.includes('판수'))
       ) {
         return;
       }
 
       if (cols.length >= 4) {
-        rows.push({
-          tournament_name: cols[0] || '공식 토너먼트',
-          round_name: cols[1] || `Round ${idx + 1}`,
-          team_first_name: cols[2],
-          team_second_name: cols[3],
-          match_id: cols[4] || undefined,
-          auto_save_enabled: autoSaveEnabled,
-        });
+        const parsedGames = parseGamesCount(cols[4]);
+        // cols[4]가 판수(1~5, Bo3 등)인 신규 공식 CSV 양식
+        if (parsedGames !== null || cols.length >= 6) {
+          rows.push({
+            tournament_name: cols[0] || '공식 토너먼트',
+            round_name: cols[1] || `Round ${idx + 1}`,
+            team_first_name: cols[2],
+            team_second_name: cols[3],
+            total_games: parsedGames ?? totalGames,
+            fearless_enabled: parseFearlessFlag(cols[5]),
+            match_id: cols[6] || undefined,
+            drive_folder_id: cols[7] || driveFolderId.trim() || undefined,
+            auto_save_enabled: autoSaveEnabled,
+          });
+        } else {
+          // 기존 4~5열 양식 (대회명,라운드,FIRST팀,SECOND팀[,고유ID])
+          rows.push({
+            tournament_name: cols[0] || '공식 토너먼트',
+            round_name: cols[1] || `Round ${idx + 1}`,
+            team_first_name: cols[2],
+            team_second_name: cols[3],
+            total_games: totalGames,
+            fearless_enabled: fearlessEnabled,
+            match_id: cols[4] || undefined,
+            drive_folder_id: driveFolderId.trim() || undefined,
+            auto_save_enabled: autoSaveEnabled,
+          });
+        }
       } else if (cols.length === 2) {
         rows.push({
           tournament_name: tournamentName || '공식 토너먼트',
           round_name: `Match ${idx + 1}`,
           team_first_name: cols[0],
           team_second_name: cols[1],
+          total_games: totalGames,
+          fearless_enabled: fearlessEnabled,
+          drive_folder_id: driveFolderId.trim() || undefined,
           auto_save_enabled: autoSaveEnabled,
         });
       }
@@ -272,10 +328,11 @@ export default function AdminPage() {
   // 샘플 CSV 다운로드
   const handleDownloadSampleCsv = () => {
     const sample = [
-      '대회명,라운드,FIRST팀,SECOND팀,고유ID(선택)',
-      '2026 LCK 서머,8강 1경기,T1,GEN,lck-qf-1',
-      '2026 LCK 서머,8강 2경기,HLE,DK,lck-qf-2',
-      '2026 LCK 서머,8강 3경기,KT,KDF,lck-qf-3',
+      '대회명,라운드,1세트FIRST팀,1세트SECOND팀,진행판수(1~5),피어리스(ON/OFF),고유ID(선택),드라이브폴더ID(선택)',
+      '2026 LCK 서머,8강 1경기,T1,GEN,3,ON,lck-qf-1,',
+      '2026 LCK 서머,8강 2경기,HLE,DK,3,ON,lck-qf-2,',
+      '2026 LCK 서머,4강 1경기,KT,KDF,5,ON,lck-sf-1,',
+      '2026 공식 스크림,연습 1경기,T1,GEN,3,OFF,scrim-01,',
     ].join('\n');
 
     const blob = new Blob(['\uFEFF' + sample], {
@@ -304,6 +361,41 @@ export default function AdminPage() {
     }
   };
 
+  // 관리자 전용: 경기 상태 업데이트 + 실시간 브로드캐스트 공통 헬퍼
+  const syncAdminMatchUpdate = async (nextState: MatchState) => {
+    await fetch(`/api/matches/${encodeURIComponent(nextState.match_id)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(nextState),
+    });
+
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      const bc = new BroadcastChannel(`lol_banpick_room_${nextState.match_id}`);
+      bc.postMessage({
+        event: 'BANPICK_STATE_UPDATED',
+        state: nextState,
+      });
+      bc.close();
+    }
+
+    if (supabase) {
+      const ch = supabase.channel(`match_room:${nextState.match_id}`);
+      ch.subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          ch.send({
+            type: 'broadcast',
+            event: 'BANPICK_STATE_UPDATED',
+            payload: { state: nextState },
+          }).finally(() => {
+            supabase?.removeChannel(ch);
+          });
+        }
+      });
+    }
+
+    await fetchMatches();
+  };
+
   // 특정 경기의 자동 저장 ON/OFF 토글
   const handleToggleMatchAutoSave = async (m: MatchState) => {
     const nextVal = m.auto_save_enabled === false ? true : false;
@@ -313,6 +405,43 @@ export default function AdminPage() {
       body: JSON.stringify({ auto_save_enabled: nextVal }),
     });
     await fetchMatches();
+  };
+
+  // 특정 경기의 하드 피어리스 ON/OFF 토글 (관리자 전용)
+  const handleToggleMatchFearless = async (m: MatchState) => {
+    const series = getSeriesState(m);
+    const res = transitionBanPickState(m, {
+      type: 'TOGGLE_FEARLESS',
+      enabled: !series.fearless_enabled,
+    });
+    if (res.ok) {
+      await syncAdminMatchUpdate(res.state);
+    }
+  };
+
+  // 관리자 전용: 현재 세트 패배팀을 지정하여 다음 세트(패배팀 = FIRST) RoFS 시작
+  const handleAdminConfirmSetLoserAndStartNext = async (
+    m: MatchState,
+    loserTeamName: string
+  ) => {
+    const series = getSeriesState(m);
+    const winnerTeamName =
+      loserTeamName === series.team_a_name
+        ? series.team_b_name
+        : series.team_a_name;
+
+    const res = transitionBanPickState(m, {
+      type: 'START_NEXT_GAME',
+      nextFirstTeamName: loserTeamName,
+      fearlessEnabled: series.fearless_enabled,
+    });
+
+    if (res.ok) {
+      await syncAdminMatchUpdate(res.state);
+      setNotice(
+        `[${m.match_id}] ${series.current_game}세트 결과 확정 (${winnerTeamName} 승 / ${loserTeamName} 패) → ${series.current_game + 1}세트 FIRST 팀으로 '${loserTeamName}' 배정 및 RoFS가 시작되었습니다!`
+      );
+    }
   };
 
   const handleDeleteMatch = async (matchId: string) => {
@@ -653,9 +782,16 @@ export default function AdminPage() {
                 </button>
               </div>
 
-              <p className="text-xs text-slate-400">
-                CSV 형식: <code className="text-slate-200">대회명,라운드,FIRST팀,SECOND팀,고유ID(선택)</code>
-              </p>
+              <div className="space-y-1">
+                <p className="text-xs text-slate-300 font-semibold">
+                  CSV 열 순서 (2세트부터는 패배팀이 자동으로 FIRST가 됩니다):
+                </p>
+                <p className="text-[11px] text-slate-400">
+                  <code className="text-amber-300">
+                    대회명,라운드,1세트FIRST팀,1세트SECOND팀,진행판수(1~5),피어리스(ON/OFF),고유ID(선택),드라이브폴더ID(선택)
+                  </code>
+                </p>
+              </div>
 
               <input
                 type="file"
@@ -668,13 +804,45 @@ export default function AdminPage() {
                 rows={4}
                 value={csvText}
                 onChange={(e) => handleCsvTextChange(e.target.value)}
-                placeholder={`직접 붙여넣기도 가능합니다:\n2026 LCK 서머,8강 1경기,T1,GEN\n2026 LCK 서머,8강 2경기,HLE,DK`}
+                placeholder={`직접 붙여넣기도 가능합니다:\n2026 LCK 서머,8강 1경기,T1,GEN,3,ON,lck-qf-1\n2026 LCK 서머,8강 2경기,HLE,DK,3,ON,lck-qf-2\n2026 LCK 서머,결승전,T1,HLE,5,ON,lck-final`}
                 className="w-full rounded-xl bg-slate-950 border border-slate-700 p-3 text-xs text-white font-mono focus:outline-none focus:border-amber-400"
               />
 
               {csvPreview.length > 0 && (
-                <div className="text-xs text-emerald-300 font-semibold">
-                  ✓ {csvPreview.length}개의 유효한 대진이 인식되었습니다.
+                <div className="space-y-2">
+                  <div className="text-xs text-emerald-300 font-semibold">
+                    ✓ {csvPreview.length}개의 유효한 대진이 인식되었습니다:
+                  </div>
+                  <div className="max-h-36 overflow-y-auto rounded-xl border border-slate-800 bg-slate-950 p-2 space-y-1 text-[11px]">
+                    {csvPreview.map((item, idx) => (
+                      <div
+                        key={`csv-preview-${idx}`}
+                        className="flex flex-wrap items-center justify-between gap-2 px-2 py-1 rounded bg-slate-900/80 text-slate-300"
+                      >
+                        <span>
+                          <strong className="text-white">{item.tournament_name}</strong> · {item.round_name}
+                        </span>
+                        <span>
+                          1세트 FIRST: <strong className="text-amber-300">{item.team_first_name}</strong> vs SECOND:{' '}
+                          <strong className="text-cyan-300">{item.team_second_name}</strong>
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                          <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold">
+                            {item.total_games}판
+                          </span>
+                          <span
+                            className={`px-1.5 py-0.5 rounded font-bold ${
+                              item.fearless_enabled
+                                ? 'bg-rose-500/20 text-rose-300'
+                                : 'bg-slate-800 text-slate-400'
+                            }`}
+                          >
+                            피어리스 {item.fearless_enabled ? 'ON' : 'OFF'}
+                          </span>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
@@ -721,17 +889,18 @@ export default function AdminPage() {
                 <thead>
                   <tr className="border-b border-slate-800 text-xs uppercase text-slate-400">
                     <th className="py-3 px-3">대회 / 라운드</th>
-                    <th className="py-3 px-3">FIRST 팀</th>
-                    <th className="py-3 px-3">SECOND 팀</th>
-                    <th className="py-3 px-3">진행 상태</th>
+                    <th className="py-3 px-3">현재 세트 FIRST / SECOND</th>
+                    <th className="py-3 px-3">다전제 / 피어리스 / 상태</th>
+                    <th className="py-3 px-3">관리자 전용: 세트 승패 결정 (패배팀 → 다음 세트 FIRST)</th>
                     <th className="py-3 px-3">자동 저장</th>
-                    <th className="py-3 px-3">팀별 전용 링크 복사 (보안 키 포함)</th>
+                    <th className="py-3 px-3">팀별 전용 링크 복사</th>
                     <th className="py-3 px-3 text-right">관리</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/70">
                   {matches.map((m) => {
                     const isAutoOn = m.auto_save_enabled !== false;
+                    const series = getSeriesState(m);
                     return (
                       <tr key={m.match_id} className="hover:bg-slate-800/30">
                         <td className="py-3 px-3">
@@ -742,16 +911,77 @@ export default function AdminPage() {
                             {m.round_name || '-'} · <span className="font-mono">{m.match_id}</span>
                           </div>
                         </td>
-                        <td className="py-3 px-3 font-extrabold text-amber-300">
-                          {m.team_first_name}
+                        <td className="py-3 px-3">
+                          <div className="text-xs">
+                            <span className="text-slate-400">FIRST:</span>{' '}
+                            <strong className="text-amber-300 font-extrabold">
+                              {m.team_first_name}
+                            </strong>
+                          </div>
+                          <div className="text-xs mt-0.5">
+                            <span className="text-slate-400">SECOND:</span>{' '}
+                            <strong className="text-cyan-300 font-extrabold">
+                              {m.team_second_name}
+                            </strong>
+                          </div>
                         </td>
-                        <td className="py-3 px-3 font-extrabold text-cyan-300">
-                          {m.team_second_name}
+                        <td className="py-3 px-3 space-y-1">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="text-xs px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 font-extrabold">
+                              {series.current_game} / {series.total_games}세트
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleToggleMatchFearless(m)}
+                              className={`text-[11px] px-2 py-0.5 rounded font-extrabold border transition-colors ${
+                                series.fearless_enabled
+                                  ? 'bg-rose-500/20 text-rose-300 border-rose-500/40 hover:bg-rose-500/30'
+                                  : 'bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700'
+                              }`}
+                            >
+                              🔥 피어리스 {series.fearless_enabled ? 'ON' : 'OFF'}
+                            </button>
+                          </div>
+                          <div>
+                            <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-800 border border-slate-700 text-slate-300 font-semibold">
+                              {m.status}
+                            </span>
+                          </div>
                         </td>
                         <td className="py-3 px-3">
-                          <span className="text-xs px-2.5 py-1 rounded-full bg-slate-800 border border-slate-700 text-slate-300 font-semibold">
-                            {m.status}
-                          </span>
+                          <div className="flex flex-col gap-1.5">
+                            <span className="text-[11px] text-slate-400">
+                              {series.current_game}세트 패배팀 클릭 시 즉시 {series.current_game + 1}세트 시작:
+                            </span>
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleAdminConfirmSetLoserAndStartNext(
+                                    m,
+                                    series.team_a_name
+                                  )
+                                }
+                                className="px-2.5 py-1 rounded-lg bg-slate-950 hover:bg-amber-500/20 text-[11px] font-bold text-amber-300 border border-amber-500/40 transition-colors"
+                              >
+                                {series.team_a_name} 패 ({series.team_b_name} 승) →{' '}
+                                {series.current_game + 1}세트 FIRST: {series.team_a_name}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleAdminConfirmSetLoserAndStartNext(
+                                    m,
+                                    series.team_b_name
+                                  )
+                                }
+                                className="px-2.5 py-1 rounded-lg bg-slate-950 hover:bg-cyan-500/20 text-[11px] font-bold text-cyan-300 border border-cyan-500/40 transition-colors"
+                              >
+                                {series.team_b_name} 패 ({series.team_a_name} 승) →{' '}
+                                {series.current_game + 1}세트 FIRST: {series.team_b_name}
+                              </button>
+                            </div>
+                          </div>
                         </td>
                         <td className="py-3 px-3">
                           <button
@@ -774,8 +1004,8 @@ export default function AdminPage() {
                               className="px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-xs font-extrabold text-amber-300 border border-amber-500/40"
                             >
                               {copiedId === `${m.match_id}:FIRST`
-                                ? '✓ FIRST 복사됨'
-                                : `FIRST(${m.team_first_name}) 링크`}
+                                ? '✓ 복사됨'
+                                : `${series.team_a_name} 링크`}
                             </button>
                             <button
                               type="button"
@@ -783,8 +1013,8 @@ export default function AdminPage() {
                               className="px-2.5 py-1 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 text-xs font-extrabold text-cyan-300 border border-cyan-500/40"
                             >
                               {copiedId === `${m.match_id}:SECOND`
-                                ? '✓ SECOND 복사됨'
-                                : `SECOND(${m.team_second_name}) 링크`}
+                                ? '✓ 복사됨'
+                                : `${series.team_b_name} 링크`}
                             </button>
                             <button
                               type="button"
@@ -793,7 +1023,7 @@ export default function AdminPage() {
                             >
                               {copiedId === `${m.match_id}:OBSERVER`
                                 ? '✓ 관전 복사됨'
-                                : '옵저버(관전) 링크'}
+                                : '옵저버 링크'}
                             </button>
                           </div>
                         </td>
@@ -802,7 +1032,7 @@ export default function AdminPage() {
                             href={buildMatchRolePath(m.match_id, 'OBSERVER')}
                             className="inline-block px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-extrabold"
                           >
-                            관전 입장
+                            관리자 관전 입장
                           </Link>
                           <button
                             type="button"

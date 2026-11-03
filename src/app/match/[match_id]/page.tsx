@@ -657,51 +657,53 @@ function MatchRoomContent() {
 
             {/* 마우스 호버 시 피어리스 금지 챔피언 목록 팝업 */}
             {seriesState.fearless_enabled && (
-              <div className="absolute right-0 top-full mt-2 hidden group-hover/fearless:block z-50 w-72 md:w-80 p-3 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl backdrop-blur-md">
-                <div className="flex items-center justify-between border-b border-slate-800 pb-2 mb-2">
-                  <span className="text-xs font-bold text-rose-400 flex items-center gap-1">
-                    🔥 피어리스 금지 챔피언 목록
-                  </span>
-                  <span className="text-[11px] font-extrabold px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300">
-                    총 {fearlessList.length}명
-                  </span>
-                </div>
-
-                {fearlessList.length === 0 ? (
-                  <p className="text-xs text-slate-400 text-center py-3">
-                    이전 세트에서 선택된 챔피언이 없습니다. (2세트부터 누적)
-                  </p>
-                ) : (
-                  <div className="max-h-60 overflow-y-auto grid grid-cols-4 gap-2 pr-1">
-                    {fearlessList.map(({ id, info }) => (
-                      <div
-                        key={`fearless-popup-${id}`}
-                        className="flex flex-col items-center bg-slate-950/80 rounded-lg p-1.5 border border-slate-800"
-                        title={info?.name ?? id}
-                      >
-                        <div className="relative w-10 h-10 rounded overflow-hidden bg-slate-900 border border-slate-700">
-                          {info ? (
-                            <img
-                              src={info.imageUrl}
-                              alt={info.name}
-                              className="w-full h-full object-cover grayscale opacity-75"
-                            />
-                          ) : (
-                            <span className="text-[9px] text-slate-500 flex items-center justify-center h-full">
-                              {id.slice(0, 3)}
-                            </span>
-                          )}
-                          <div className="absolute inset-0 flex items-center justify-center bg-rose-950/30">
-                            <div className="w-full h-0.5 bg-rose-500/80 rotate-45" />
-                          </div>
-                        </div>
-                        <span className="text-[10px] font-bold text-slate-300 truncate w-full text-center mt-1">
-                          {info?.name ?? id}
-                        </span>
-                      </div>
-                    ))}
+              <div className="absolute right-0 top-full pt-1.5 hidden group-hover/fearless:block hover:block z-50">
+                <div className="w-80 sm:w-96 p-3 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl backdrop-blur-md relative before:content-[''] before:absolute before:-top-3 before:left-0 before:right-0 before:h-3">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2 mb-2">
+                    <span className="text-xs font-bold text-rose-400 flex items-center gap-1">
+                      🔥 피어리스 금지 챔피언 목록
+                    </span>
+                    <span className="text-[11px] font-extrabold px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300">
+                      총 {fearlessList.length}명
+                    </span>
                   </div>
-                )}
+
+                  {fearlessList.length === 0 ? (
+                    <p className="text-xs text-slate-400 text-center py-3">
+                      이전 세트에서 선택된 챔피언이 없습니다. (2세트부터 누적)
+                    </p>
+                  ) : (
+                    <div className="max-h-64 overflow-y-auto grid grid-cols-5 gap-1.5 pr-1">
+                      {fearlessList.map(({ id, info }) => (
+                        <div
+                          key={`fearless-popup-${id}`}
+                          className="flex flex-col items-center bg-slate-950/80 rounded-lg p-1.5 border border-slate-800"
+                          title={info?.name ?? id}
+                        >
+                          <div className="relative w-10 h-10 rounded overflow-hidden bg-slate-900 border border-slate-700">
+                            {info ? (
+                              <img
+                                src={info.imageUrl}
+                                alt={info.name}
+                                className="w-full h-full object-cover grayscale opacity-75"
+                              />
+                            ) : (
+                              <span className="text-[9px] text-slate-500 flex items-center justify-center h-full">
+                                {id.slice(0, 3)}
+                              </span>
+                            )}
+                            <div className="absolute inset-0 flex items-center justify-center bg-rose-950/30">
+                              <div className="w-full h-0.5 bg-rose-500/80 rotate-45" />
+                            </div>
+                          </div>
+                          <span className="text-[10px] font-bold text-slate-300 truncate w-full text-center mt-1">
+                            {info?.name ?? id}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>

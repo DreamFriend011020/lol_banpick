@@ -619,7 +619,7 @@ export default function BanPickDraftScreen({
       return '밴픽 및 라인 스왑 완료 (DRAFT COMPLETED)';
     }
     if (inSwapPhase) {
-      return '최종 라인 스왑 페이즈 (60초) — 챔피언의 라인(TOP/JGL/MID/BOT/SUP)을 배치하세요';
+      return '최종 라인 스왑 페이즈 (60초)';
     }
     if (!currentStep) {
       return '밴픽 완료';
@@ -956,7 +956,7 @@ export default function BanPickDraftScreen({
             <div className="rounded-xl bg-slate-900/80 border border-slate-800 px-4 py-2 text-xs text-slate-300 flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
               <span className="font-bold text-amber-400">RoFS 확정 결과</span>
               <span>
-                FIRST 팀 {match.team_first_name} 우선 선택:{' '}
+                {match.team_first_name}팀 선택:{' '}
                 <strong className="text-white">
                   {match.rofs_submissions.first_choice.category === 'SIDE'
                     ? `${match.rofs_submissions.first_choice.choice === 'BLUE' ? '블루' : '레드'} 진영`
@@ -965,7 +965,7 @@ export default function BanPickDraftScreen({
               </span>
               <span className="text-slate-600">→</span>
               <span>
-                나머지 옵션 SECOND 팀 {match.team_second_name} 선택 적용:{' '}
+                {match.team_second_name}팀 선택:{' '}
                 <strong className="text-cyan-300">
                   {match.rofs_submissions.first_choice.category === 'SIDE'
                     ? `${match.rofs_submissions.second_choice.pickOrderChoice === 'FIRST_PICK' ? '선픽' : '후픽'}`
@@ -1066,8 +1066,8 @@ export default function BanPickDraftScreen({
                   </div>
 
                   <div className="text-sm font-bold text-slate-200">
-                    턴 {currentStep.turnIndex + 1} /{' '}
-                    {TOURNAMENT_DRAFT_SEQUENCE.length} —{' '}
+                    {/* 턴 {currentStep.turnIndex + 1} /{' '}
+                    {TOURNAMENT_DRAFT_SEQUENCE.length} —{' '} */}
                     <span
                       className={
                         currentStep.side === 'BLUE'
@@ -1573,11 +1573,21 @@ export default function BanPickDraftScreen({
                               — 우측 버튼을 눌러 확정하세요.
                             </span>
                           ) : (
-                            <span className="text-amber-300 font-semibold">
-                              우리 팀({viewerSide})의{' '}
-                              {currentStep.actionType === 'BAN'
-                                ? '밴 차례입니다! 챔피언을 선택해주세요.'
-                                : '픽 차례입니다! \n 아무것도 선택하지 않으면 랜덤 픽으로 결정됩니다.'}
+                            <span className="text-amber-300 font-semibold leading-relaxed">
+                              우리 팀의{' '}
+                              {currentStep.actionType === 'BAN' ? (
+                                <>
+                                  밴 차례입니다!
+                                  <br />
+                                  챔피언을 선택해주세요.
+                                </>
+                              ) : (
+                                <>
+                                  픽 차례입니다!
+                                  <br />
+                                  아무것도 선택하지 않으면 랜덤 픽으로 결정됩니다.
+                                </>
+                              )}
                             </span>
                           )
                         ) : (
@@ -1585,8 +1595,8 @@ export default function BanPickDraftScreen({
                             현재{' '}
                             <strong className="text-white">
                               {currentStep.side === 'BLUE'
-                                ? `${blueTeamName} (BLUE)`
-                                : `${redTeamName} (RED)`}
+                                ? `${blueTeamName}`
+                                : `${redTeamName}`}
                             </strong>{' '}
                             팀이 {currentStep.label}을 진행하고 있습니다...
                           </span>

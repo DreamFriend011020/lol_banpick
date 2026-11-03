@@ -5,7 +5,7 @@ import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { BanPickAction, MatchState, RofsAction } from '../../../types/match';
-import { transitionRofsState } from '../../../lib/rofsMachine';
+import { resolveFinalRofsResult, transitionRofsState } from '../../../lib/rofsMachine';
 import {
   getSeriesState,
   isMatchAutoSaveEnabled,
@@ -49,7 +49,7 @@ function loadRoleKeySession(matchId: string): string | null {
 
 const STATUS_PRIORITY: Record<MatchState['status'], number> = {
   ROFS_FIRST_PICK: 0,
-  ROFS_SECOND_PICK: 1,
+  ROFS_SECOND_PICK: 0,
   BANPICK_READY: 2,
   BANPICK_IN_PROGRESS: 3,
   COMPLETED: 4,
@@ -120,6 +120,55 @@ function mergeIncomingMatchState(
   // 이미 더 진행된 단계(예: COMPLETED -> BANPICK_IN_PROGRESS)로 역행하는 지연 패킷 무시
   if (nextRank < prevRank) {
     return prev;
+  }
+
+  // RoFS 동시 선택 단계에서 양 팀의 제출값이 서로 덮어씌워져 해제되지 않도록 병합
+  if (prevRank === 0 && nextRank === 0) {
+    const mergedFirst =
+      incoming.rofs_submissions?.first_choice ??
+      prev.rofs_submissions?.first_choice ??
+      null;
+    const mergedSecond =
+      incoming.rofs_submissions?.second_choice ??
+      prev.rofs_submissions?.second_choice ??
+      null;
+
+    const mergedSubmissions = {
+      ...(prev.rofs_submissions ?? {}),
+      ...(incoming.rofs_submissions ?? {}),
+      first_choice: mergedFirst,
+      second_choice: mergedSecond,
+    };
+
+    if (mergedFirst !== null && mergedSecond !== null) {
+      const { selected_side, pick_turn } = resolveFinalRofsResult(
+        incoming.team_first_name,
+        incoming.team_second_name,
+        mergedFirst,
+        mergedSecond
+      );
+      const readyState: MatchState = {
+        ...incoming,
+        selected_side,
+        pick_turn,
+        rofs_submissions: mergedSubmissions,
+        status: 'BANPICK_READY',
+      };
+      const bpStart = transitionBanPickState(readyState, {
+        type: 'START_BANPICK',
+        now: Date.now(),
+      });
+      return bpStart.ok ? bpStart.state : readyState;
+    }
+
+    return {
+      ...incoming,
+      rofs_submissions: mergedSubmissions,
+      status:
+        mergedFirst !== null && mergedSecond === null
+          ? 'ROFS_SECOND_PICK'
+          : 'ROFS_FIRST_PICK',
+    };
   }
 
   // 밴픽 진행 중일 때 턴 인덱스 및 타이머 중복 보호
@@ -494,6 +543,13 @@ function MatchRoomContent() {
   // 각 팀장이 처음 발급받은 본인 팀 전용 링크 하나로 자기 팀의 현재 세트 역할(FIRST 또는 SECOND)을 그대로 수행하도록 매핑
   const effectiveViewerRole: ViewerRole = React.useMemo(() => {
     if (viewerRole === 'OBSERVER') return 'OBSERVER';
+    if (
+      seriesState.team_a_name === seriesState.team_b_name ||
+      match.team_first_name === match.team_second_name
+    ) {
+      return viewerRole;
+    }
+
     const myTeamName =
       viewerRole === 'FIRST'
         ? seriesState.team_a_name

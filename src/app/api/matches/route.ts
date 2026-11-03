@@ -66,9 +66,12 @@ export async function POST(req: NextRequest) {
     const nowIso = new Date().toISOString();
 
     rawList.forEach((item, idx) => {
-      const first = item.team_first_name?.trim();
-      const second = item.team_second_name?.trim();
-      if (!first || !second) return;
+      const rawFirst = item.team_first_name?.trim();
+      const rawSecond = item.team_second_name?.trim();
+      if (!rawFirst || !rawSecond) return;
+
+      const first = rawFirst === rawSecond ? `${rawFirst} (1팀)` : rawFirst;
+      const second = rawFirst === rawSecond ? `${rawSecond} (2팀)` : rawSecond;
 
       const matchId = item.match_id?.trim() || generateMatchId(idx);
       const totalGames = Math.max(1, Number(item.total_games) || 1);

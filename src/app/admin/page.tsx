@@ -143,6 +143,11 @@ export default function AdminPage() {
       return;
     }
 
+    if (firstTeamName.trim() === secondTeamName.trim()) {
+      setErrorMsg('FIRST 팀 이름과 SECOND 팀 이름은 서로 다르게 입력해주세요.');
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       const first = firstTeamName.trim();

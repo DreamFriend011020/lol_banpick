@@ -106,6 +106,21 @@ export async function PATCH(
       drive_webhook_url: resolvedWebhookUrl,
     };
 
+    const existingGame =
+      existing?.rofs_submissions?.series_state?.current_game ??
+      existing?.series_state?.current_game ??
+      1;
+    const isSameGame = existingGame === syncedSeries.current_game;
+
+    const mergedFirstChoice =
+      baseRofs?.first_choice ??
+      (isSameGame ? existing?.rofs_submissions?.first_choice : null) ??
+      null;
+    const mergedSecondChoice =
+      baseRofs?.second_choice ??
+      (isSameGame ? existing?.rofs_submissions?.second_choice : null) ??
+      null;
+
     const updated: MatchState = {
       match_id: matchId,
       tournament_name:
@@ -125,8 +140,8 @@ export async function PATCH(
           ? body.pick_turn
           : existing?.pick_turn ?? null,
       rofs_submissions: {
-        first_choice: baseRofs?.first_choice ?? null,
-        second_choice: baseRofs?.second_choice ?? null,
+        first_choice: mergedFirstChoice,
+        second_choice: mergedSecondChoice,
         series_state: syncedSeries,
       },
       banpick_state:

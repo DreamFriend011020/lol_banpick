@@ -307,6 +307,22 @@ export function resolveViewerSide(
 ): SideChoice | null {
   if (viewerRole === 'OBSERVER' || !match.selected_side) return null;
 
+  if (match.team_first_name === match.team_second_name) {
+    const firstChoice = match.rofs_submissions?.first_choice;
+    const secondChoice = match.rofs_submissions?.second_choice;
+    let firstSide: SideChoice = 'BLUE';
+    if (firstChoice?.category === 'SIDE') {
+      firstSide = firstChoice.choice;
+    } else if (secondChoice?.sideChoice) {
+      firstSide = secondChoice.sideChoice === 'BLUE' ? 'RED' : 'BLUE';
+    }
+    return viewerRole === 'FIRST'
+      ? firstSide
+      : firstSide === 'BLUE'
+        ? 'RED'
+        : 'BLUE';
+  }
+
   const teamName =
     viewerRole === 'FIRST' ? match.team_first_name : match.team_second_name;
 

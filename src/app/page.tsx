@@ -51,6 +51,11 @@ export default function HomePage() {
       return;
     }
 
+    if (first === second) {
+      setScrimError('FIRST 팀 이름과 SECOND 팀 이름은 서로 다르게 입력해주세요.');
+      return;
+    }
+
     setIsCreatingScrim(true);
     try {
       const rand = Math.random().toString(36).substring(2, 7);
@@ -138,9 +143,9 @@ export default function HomePage() {
                 <h2 className="text-xl font-extrabold text-white">
                   자유 스크림 방 즉시 생성
                 </h2>
-                <p className="text-xs text-slate-400 mt-1">
+                {/* <p className="text-xs text-slate-400 mt-1">
                   양 팀 이름을 입력하면 연습용 고유 링크가 즉시 발급됩니다. 링크를 상대 팀에게 공유해 바로 밴픽을 연습하세요.
-                </p>
+                </p> */}
               </div>
 
               <form onSubmit={handleCreateScrimRoom} className="space-y-3">
@@ -177,11 +182,13 @@ export default function HomePage() {
                   <div className="flex items-center justify-between gap-2">
                     <div>
                       <div className="text-xs font-bold text-slate-200">
-                        진행 판수 (다전제 설정)
+                        진행 판수
+                        <br />
+                        (다전제설정)
                       </div>
-                      <div className="text-[11px] text-slate-400">
+                      {/* <div className="text-[11px] text-slate-400">
                         2세트부터는 이전 세트 패배팀이 FIRST가 됩니다.
-                      </div>
+                      </div> */}
                     </div>
                     <div className="flex items-center gap-1">
                       {[1, 2, 3, 4, 5].map((cnt) => (
@@ -189,11 +196,10 @@ export default function HomePage() {
                           key={cnt}
                           type="button"
                           onClick={() => setScrimTotalGames(cnt)}
-                          className={`px-2.5 py-1 rounded-lg text-xs font-extrabold transition-colors ${
-                            scrimTotalGames === cnt
-                              ? 'bg-amber-500 text-slate-950'
-                              : 'bg-slate-900 text-slate-400 border border-slate-700 hover:bg-slate-800'
-                          }`}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-extrabold transition-colors ${scrimTotalGames === cnt
+                            ? 'bg-amber-500 text-slate-950'
+                            : 'bg-slate-900 text-slate-400 border border-slate-700 hover:bg-slate-800'
+                            }`}
                         >
                           {cnt}판
                         </button>
@@ -207,20 +213,19 @@ export default function HomePage() {
                       <div className="text-xs font-bold text-rose-300">
                         🔥 하드 피어리스 룰 (Hard Fearless)
                       </div>
-                      <div className="text-[11px] text-slate-400">
+                      {/* <div className="text-[11px] text-slate-400">
                         {scrimFearless
                           ? 'ON: 이전 세트에서 양 팀이 픽한 모든 챔피언이 다음 세트에서 금지됩니다.'
                           : 'OFF: 이전 세트 픽과 무관하게 매 세트 모든 챔피언을 사용할 수 있습니다.'}
-                      </div>
+                      </div> */}
                     </div>
                     <button
                       type="button"
                       onClick={() => setScrimFearless((prev) => !prev)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-extrabold transition-colors flex-shrink-0 ${
-                        scrimFearless
-                          ? 'bg-rose-500 text-white'
-                          : 'bg-slate-800 text-slate-400 border border-slate-700'
-                      }`}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-extrabold transition-colors flex-shrink-0 ${scrimFearless
+                        ? 'bg-rose-500 text-white'
+                        : 'bg-slate-800 text-slate-400 border border-slate-700'
+                        }`}
                     >
                       {scrimFearless ? '피어리스 ON' : '피어리스 OFF'}
                     </button>
@@ -234,20 +239,19 @@ export default function HomePage() {
                       <div className="text-xs font-bold text-slate-200">
                         밴픽 종료 시 결과 사진 자동 저장
                       </div>
-                      <div className="text-[11px] text-slate-400">
+                      {/* <div className="text-[11px] text-slate-400">
                         {scrimAutoSave
                           ? 'ON: 종료 시 지정한 구글 드라이브/PC에 자동 저장됩니다.'
                           : 'OFF: 연습용이므로 자동 저장하지 않습니다. (수동 저장은 가능)'}
-                      </div>
+                      </div> */}
                     </div>
                     <button
                       type="button"
                       onClick={() => setScrimAutoSave((prev) => !prev)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-extrabold transition-colors ${
-                        scrimAutoSave
-                          ? 'bg-emerald-500 text-slate-950'
-                          : 'bg-slate-800 text-slate-400 border border-slate-700'
-                      }`}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-extrabold transition-colors ${scrimAutoSave
+                        ? 'bg-emerald-500 text-slate-950'
+                        : 'bg-slate-800 text-slate-400 border border-slate-700'
+                        }`}
                     >
                       {scrimAutoSave ? '자동 저장 ON' : '자동 저장 OFF'}
                     </button>
@@ -405,9 +409,9 @@ export default function HomePage() {
                 <h2 className="text-xl font-extrabold text-white">
                   Match ID로 경기 방 입장
                 </h2>
-                <p className="text-xs text-slate-400 mt-1">
+                {/* <p className="text-xs text-slate-400 mt-1">
                   운영진 또는 스크림 상대방에게 전달받은 Match ID를 입력해 입장합니다.
-                </p>
+                </p> */}
               </div>
 
               <form onSubmit={handleEnterMatch} className="space-y-3">
@@ -435,9 +439,9 @@ export default function HomePage() {
             </div>
 
             <div className="pt-4 border-t border-slate-800 space-y-2">
-              <div className="text-xs text-slate-400 text-center">
+              {/* <div className="text-xs text-slate-400 text-center">
                 본 대회 대진표 등록 및 CSV 일괄 업로드는 운영진 전용입니다.
-              </div>
+              </div> */}
               <Link
                 href="/admin"
                 className="block w-full py-3 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-center text-xs font-extrabold text-cyan-300 transition-colors"

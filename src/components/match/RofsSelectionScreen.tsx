@@ -43,14 +43,20 @@ export default function RofsSelectionScreen({
   const hasFirstSubmitted = firstSubmittedChoice !== null;
   const hasSecondSubmitted = secondSubmittedChoice !== null;
 
-  // 매치 초기화 시 로컬 선택값 리셋
+  // 매치 초기화(다음 세트 전환 등) 시 각 팀의 로컬 선택값을 개별적으로 리셋
+  // (상대 팀이 먼저 제출 완료하더라도 내 로컬 선택값이 풀리지 않도록 분리)
   useEffect(() => {
-    if (!hasFirstSubmitted) setFirstPending(null);
+    if (!hasFirstSubmitted) {
+      setFirstPending(null);
+    }
+  }, [hasFirstSubmitted]);
+
+  useEffect(() => {
     if (!hasSecondSubmitted) {
       setSecondSidePending(null);
       setSecondPickOrderPending(null);
     }
-  }, [hasFirstSubmitted, hasSecondSubmitted]);
+  }, [hasSecondSubmitted]);
 
   // 현재 뷰어가 조작 가능한 상태인지 판별
   const canFirstInteract =
@@ -139,14 +145,14 @@ export default function RofsSelectionScreen({
       if (hasFirstSubmitted) {
         return `FIRST 팀(${match.team_first_name}) 선택 완료! SECOND 팀(${match.team_second_name})의 선택이 마무리되면 결과가 즉시 반영됩니다.`;
       }
-      return `${match.team_first_name} (FIRST 팀장): [옵션 A: 진영] 또는 [옵션 B: 픽 순서] 중 원하는 권한 1가지만 선택해 확정하세요.`;
+      return `${match.team_first_name} (FIRST 팀장): 원하는 권한 1가지만 선택해 확정하세요.`;
     }
 
     if (viewerRole === 'SECOND') {
       if (hasSecondSubmitted) {
         return `SECOND 팀(${match.team_second_name}) 선택 완료! FIRST 팀(${match.team_first_name})의 선택이 마무리되면 결과가 즉시 반영됩니다.`;
       }
-      return `${match.team_second_name} (SECOND 팀장): [옵션 A: 진영]과 [옵션 B: 픽 순서] 두 가지를 모두 선택하세요. FIRST 팀이 고르지 않은 나머지 옵션에 우리 팀의 선택이 적용됩니다.`;
+      return `${match.team_second_name} (SECOND 팀장): 두 가지를 모두 선택하세요. FIRST 팀이 고르지 않은 나머지 옵션에 우리 팀의 선택이 적용됩니다.`;
     }
 
     return '양 팀 팀장이 동시에 RoFS(진영 및 픽 순서) 선택을 진행하고 있습니다.';
@@ -180,11 +186,10 @@ export default function RofsSelectionScreen({
         <div className="grid grid-cols-1 md:grid-cols-3 items-center gap-4 bg-slate-900/80 border border-slate-800 rounded-2xl p-6 shadow-xl">
           {/* FIRST 팀 상태 카드 */}
           <div
-            className={`flex flex-col items-center md:items-start p-4 rounded-xl border transition-all ${
-              hasFirstSubmitted
-                ? 'border-emerald-500/60 bg-emerald-950/20'
-                : 'border-amber-500/70 bg-amber-500/10'
-            }`}
+            className={`flex flex-col items-center md:items-start p-4 rounded-xl border transition-all ${hasFirstSubmitted
+              ? 'border-emerald-500/60 bg-emerald-950/20'
+              : 'border-amber-500/70 bg-amber-500/10'
+              }`}
           >
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
@@ -204,7 +209,7 @@ export default function RofsSelectionScreen({
             <p className="text-xs text-slate-400 mt-1">
               {hasFirstSubmitted
                 ? '선택 확정됨 (상대 팀 완료 시 공개)'
-                : '진영 또는 픽 순서 중 1가지 선택 중...'}
+                : '선택 중...'}
             </p>
           </div>
 
@@ -224,11 +229,10 @@ export default function RofsSelectionScreen({
 
           {/* SECOND 팀 상태 카드 */}
           <div
-            className={`flex flex-col items-center md:items-end p-4 rounded-xl border transition-all ${
-              hasSecondSubmitted
-                ? 'border-emerald-500/60 bg-emerald-950/20'
-                : 'border-cyan-500/70 bg-cyan-500/10'
-            }`}
+            className={`flex flex-col items-center md:items-end p-4 rounded-xl border transition-all ${hasSecondSubmitted
+              ? 'border-emerald-500/60 bg-emerald-950/20'
+              : 'border-cyan-500/70 bg-cyan-500/10'
+              }`}
           >
             <div className="flex items-center gap-2">
               {hasSecondSubmitted ? (
@@ -248,7 +252,7 @@ export default function RofsSelectionScreen({
             <p className="text-xs text-slate-400 mt-1">
               {hasSecondSubmitted
                 ? '2가지 옵션 모두 확정됨 (상대 팀 완료 시 공개)'
-                : '희망 진영 + 희망 픽 순서 모두 선택 중...'}
+                : '선택 중...'}
             </p>
           </div>
         </div>
@@ -276,7 +280,7 @@ export default function RofsSelectionScreen({
             <div className="flex items-center gap-2">
               {hasSecondSubmitted ? (
                 <span className="text-emerald-400 font-bold">
-                  ✓ SECOND 팀({match.team_second_name}) 2개 옵션 선택 완료
+                  ✓ SECOND 팀({match.team_second_name}) 선택 완료
                 </span>
               ) : (
                 <span className="flex items-center gap-1.5 text-cyan-400 font-medium">
@@ -295,25 +299,24 @@ export default function RofsSelectionScreen({
       <main className="max-w-5xl w-full mx-auto my-8 grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* 카드 A: 진영(Side) 선택 */}
         <section
-          className={`relative rounded-2xl border p-6 flex flex-col justify-between transition-all ${
-            isSideOptionSelected('BLUE') || isSideOptionSelected('RED')
-              ? 'border-blue-400/70 bg-slate-900 shadow-lg shadow-blue-500/5'
-              : isSideButtonEnabled
-                ? 'border-slate-700 bg-slate-900/90 hover:border-slate-500'
-                : 'border-slate-800/80 bg-slate-900/40 opacity-75'
-          }`}
+          className={`relative rounded-2xl border p-6 flex flex-col justify-between transition-all ${isSideOptionSelected('BLUE') || isSideOptionSelected('RED')
+            ? 'border-blue-400/70 bg-slate-900 shadow-lg shadow-blue-500/5'
+            : isSideButtonEnabled
+              ? 'border-slate-700 bg-slate-900/90 hover:border-slate-500'
+              : 'border-slate-800/80 bg-slate-900/40 opacity-75'
+            }`}
         >
           <div>
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded bg-slate-800 text-slate-300">
-                옵션 A — 진영(Side)
+                진영(Side)
               </span>
               {viewerRole === 'FIRST' && (
                 <span className="text-xs font-semibold text-amber-300">
                   {firstPending?.category === 'SIDE' ||
-                  firstSubmittedChoice?.category === 'SIDE'
+                    firstSubmittedChoice?.category === 'SIDE'
                     ? '✓ FIRST 우선권으로 선택됨'
-                    : '옵션 A 또는 B 중 택 1'}
+                    : '진영 또는 픽 순서 중 택 1'}
                 </span>
               )}
               {viewerRole === 'SECOND' && (
@@ -328,11 +331,11 @@ export default function RofsSelectionScreen({
             <h3 className="text-xl font-bold text-white mt-2">
               진영(Side) 결정
             </h3>
-            <p className="text-sm text-slate-400 mt-1">
+            {/* <p className="text-sm text-slate-400 mt-1">
               {viewerRole === 'SECOND'
                 ? 'FIRST 팀이 [픽 순서]를 가져갈 경우, 여기서 선택한 진영이 우리 팀(SECOND)에 그대로 배정됩니다.'
                 : '블루 진영 또는 레드 진영 중 우리 팀이 플레이할 진영을 선택합니다.'}
-            </p>
+            </p> */}
           </div>
 
           {/* 진영 선택 버튼 (블루 / 레드) */}
@@ -342,11 +345,10 @@ export default function RofsSelectionScreen({
               type="button"
               disabled={!isSideButtonEnabled}
               onClick={() => handleSideClick('BLUE')}
-              className={`group relative rounded-xl p-5 border text-left transition-all ${
-                isSideOptionSelected('BLUE')
-                  ? 'border-blue-400 bg-blue-600/25 ring-2 ring-blue-400/50'
-                  : 'border-blue-500/30 bg-blue-950/30 hover:bg-blue-900/40'
-              } disabled:cursor-not-allowed disabled:hover:bg-blue-950/30`}
+              className={`group relative rounded-xl p-5 border text-left transition-all ${isSideOptionSelected('BLUE')
+                ? 'border-blue-400 bg-blue-600/25 ring-2 ring-blue-400/50'
+                : 'border-blue-500/30 bg-blue-950/30 hover:bg-blue-900/40'
+                } disabled:cursor-not-allowed disabled:hover:bg-blue-950/30`}
             >
               <div className="text-xs font-bold text-blue-400 uppercase tracking-wider">
                 BLUE SIDE
@@ -366,11 +368,10 @@ export default function RofsSelectionScreen({
               type="button"
               disabled={!isSideButtonEnabled}
               onClick={() => handleSideClick('RED')}
-              className={`group relative rounded-xl p-5 border text-left transition-all ${
-                isSideOptionSelected('RED')
-                  ? 'border-rose-400 bg-rose-600/25 ring-2 ring-rose-400/50'
-                  : 'border-rose-500/30 bg-rose-950/30 hover:bg-rose-900/40'
-              } disabled:cursor-not-allowed disabled:hover:bg-rose-950/30`}
+              className={`group relative rounded-xl p-5 border text-left transition-all ${isSideOptionSelected('RED')
+                ? 'border-rose-400 bg-rose-600/25 ring-2 ring-rose-400/50'
+                : 'border-rose-500/30 bg-rose-950/30 hover:bg-rose-900/40'
+                } disabled:cursor-not-allowed disabled:hover:bg-rose-950/30`}
             >
               <div className="text-xs font-bold text-rose-400 uppercase tracking-wider">
                 RED SIDE
@@ -389,32 +390,31 @@ export default function RofsSelectionScreen({
 
         {/* 카드 B: 픽 순서(Pick Order) 선택 */}
         <section
-          className={`relative rounded-2xl border p-6 flex flex-col justify-between transition-all ${
-            isPickOrderOptionSelected('FIRST_PICK') ||
+          className={`relative rounded-2xl border p-6 flex flex-col justify-between transition-all ${isPickOrderOptionSelected('FIRST_PICK') ||
             isPickOrderOptionSelected('LAST_PICK')
-              ? 'border-amber-400/70 bg-slate-900 shadow-lg shadow-amber-500/5'
-              : isPickOrderButtonEnabled
-                ? 'border-slate-700 bg-slate-900/90 hover:border-slate-500'
-                : 'border-slate-800/80 bg-slate-900/40 opacity-75'
-          }`}
+            ? 'border-amber-400/70 bg-slate-900 shadow-lg shadow-amber-500/5'
+            : isPickOrderButtonEnabled
+              ? 'border-slate-700 bg-slate-900/90 hover:border-slate-500'
+              : 'border-slate-800/80 bg-slate-900/40 opacity-75'
+            }`}
         >
           <div>
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded bg-slate-800 text-slate-300">
-                옵션 B — 픽 순서(Pick Order)
+                픽 순서(Pick Order)
               </span>
               {viewerRole === 'FIRST' && (
                 <span className="text-xs font-semibold text-amber-300">
                   {firstPending?.category === 'PICK_ORDER' ||
-                  firstSubmittedChoice?.category === 'PICK_ORDER'
+                    firstSubmittedChoice?.category === 'PICK_ORDER'
                     ? '✓ FIRST 우선권으로 선택됨'
-                    : '옵션 A 또는 B 중 택 1'}
+                    : '진영 또는 픽 순서 중 택 1'}
                 </span>
               )}
               {viewerRole === 'SECOND' && (
                 <span className="text-xs font-semibold text-cyan-300">
                   {secondPickOrderPending ||
-                  secondSubmittedChoice?.pickOrderChoice
+                    secondSubmittedChoice?.pickOrderChoice
                     ? '✓ 희망 픽 순서 선택됨 (2/2)'
                     : '필수 선택 (2/2)'}
                 </span>
@@ -424,11 +424,11 @@ export default function RofsSelectionScreen({
             <h3 className="text-xl font-bold text-white mt-2">
               픽 순서(Pick Order) 결정
             </h3>
-            <p className="text-sm text-slate-400 mt-1">
+            {/* <p className="text-sm text-slate-400 mt-1">
               {viewerRole === 'SECOND'
                 ? 'FIRST 팀이 [진영]을 가져갈 경우, 여기서 선택한 픽 순서가 우리 팀(SECOND)에 그대로 배정됩니다.'
                 : '밴픽에서 선픽(First Pick) 또는 후픽(Last Pick) 중 어떤 순서를 가져갈지 선택합니다.'}
-            </p>
+            </p> */}
           </div>
 
           {/* 픽 순서 선택 버튼 (선픽 / 후픽) */}
@@ -438,17 +438,16 @@ export default function RofsSelectionScreen({
               type="button"
               disabled={!isPickOrderButtonEnabled}
               onClick={() => handlePickOrderClick('FIRST_PICK')}
-              className={`group relative rounded-xl p-5 border text-left transition-all ${
-                isPickOrderOptionSelected('FIRST_PICK')
-                  ? 'border-amber-400 bg-amber-600/25 ring-2 ring-amber-400/50'
-                  : 'border-amber-500/30 bg-amber-950/30 hover:bg-amber-900/40'
-              } disabled:cursor-not-allowed disabled:hover:bg-amber-950/30`}
+              className={`group relative rounded-xl p-5 border text-left transition-all ${isPickOrderOptionSelected('FIRST_PICK')
+                ? 'border-amber-400 bg-amber-600/25 ring-2 ring-amber-400/50'
+                : 'border-amber-500/30 bg-amber-950/30 hover:bg-amber-900/40'
+                } disabled:cursor-not-allowed disabled:hover:bg-amber-950/30`}
             >
               <div className="text-xs font-bold text-amber-400 uppercase tracking-wider">
                 FIRST PICK
               </div>
               <div className="text-lg font-extrabold text-white mt-1">
-                선픽 (1픽)
+                선픽
               </div>
               {isPickOrderOptionSelected('FIRST_PICK') && (
                 <div className="mt-3 inline-block text-xs font-bold px-2 py-0.5 rounded bg-amber-500/30 text-amber-200">
@@ -462,17 +461,16 @@ export default function RofsSelectionScreen({
               type="button"
               disabled={!isPickOrderButtonEnabled}
               onClick={() => handlePickOrderClick('LAST_PICK')}
-              className={`group relative rounded-xl p-5 border text-left transition-all ${
-                isPickOrderOptionSelected('LAST_PICK')
-                  ? 'border-purple-400 bg-purple-600/25 ring-2 ring-purple-400/50'
-                  : 'border-purple-500/30 bg-purple-950/30 hover:bg-purple-900/40'
-              } disabled:cursor-not-allowed disabled:hover:bg-purple-950/30`}
+              className={`group relative rounded-xl p-5 border text-left transition-all ${isPickOrderOptionSelected('LAST_PICK')
+                ? 'border-purple-400 bg-purple-600/25 ring-2 ring-purple-400/50'
+                : 'border-purple-500/30 bg-purple-950/30 hover:bg-purple-900/40'
+                } disabled:cursor-not-allowed disabled:hover:bg-purple-950/30`}
             >
               <div className="text-xs font-bold text-purple-400 uppercase tracking-wider">
                 LAST PICK
               </div>
               <div className="text-lg font-extrabold text-white mt-1">
-                후픽 (막픽)
+                후픽
               </div>
               {isPickOrderOptionSelected('LAST_PICK') && (
                 <div className="mt-3 inline-block text-xs font-bold px-2 py-0.5 rounded bg-purple-500/30 text-purple-200">
@@ -510,7 +508,7 @@ export default function RofsSelectionScreen({
                         ? '픽 순서 - 선픽(FIRST PICK)'
                         : '픽 순서 - 후픽(LAST PICK)'}
                   </strong>{' '}
-                  (SECOND 팀의 선택 완료를 기다리는 중...)
+                  (SECOND 팀의 선택을 기다리는 중...)
                 </span>
               ) : firstPending ? (
                 <span>
@@ -527,7 +525,7 @@ export default function RofsSelectionScreen({
                 </span>
               ) : (
                 <span className="text-slate-400">
-                  위 두 카드 중 원하는 옵션 1개를 클릭한 뒤 [FIRST 팀 선택 확정] 버튼을 눌러주세요.
+                  위 두 카드 중 원하는 옵션 1개를 클릭한 뒤 [선택 확정] 버튼을 눌러주세요.
                 </span>
               )}
             </div>
@@ -539,7 +537,7 @@ export default function RofsSelectionScreen({
                 onClick={handleConfirm}
                 className="w-full sm:w-auto px-8 py-3 rounded-xl font-bold text-sm bg-amber-500 hover:bg-amber-400 text-slate-950 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                {isSubmitting ? '제출 중...' : 'FIRST 팀 선택 확정'}
+                {isSubmitting ? '제출 중...' : '선택 확정'}
               </button>
             )}
           </div>
@@ -560,7 +558,7 @@ export default function RofsSelectionScreen({
                       : '후픽'}
                     )
                   </strong>{' '}
-                  (FIRST 팀의 선택 완료를 기다리는 중...)
+                  (FIRST 팀의 선택을 기다리는 중...)
                 </span>
               ) : (
                 <span>
@@ -600,7 +598,7 @@ export default function RofsSelectionScreen({
                 onClick={handleConfirm}
                 className="w-full sm:w-auto px-8 py-3 rounded-xl font-bold text-sm bg-cyan-500 hover:bg-cyan-400 text-slate-950 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                {isSubmitting ? '제출 중...' : 'SECOND 팀 2가지 옵션 모두 확정'}
+                {isSubmitting ? '제출 중...' : '선택 확정'}
               </button>
             )}
           </div>

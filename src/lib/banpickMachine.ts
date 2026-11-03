@@ -187,6 +187,7 @@ export function getSeriesState(match?: MatchState | null): SeriesState {
     drive_folder_id: match?.drive_folder_id ?? raw?.drive_folder_id,
     drive_webhook_url: match?.drive_webhook_url ?? raw?.drive_webhook_url,
     is_scrim: resolvedIsScrim,
+    admin_key: raw?.admin_key,
   };
 }
 

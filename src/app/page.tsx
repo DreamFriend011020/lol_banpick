@@ -303,9 +303,9 @@ export default function HomePage() {
                   </span>
                 </div>
 
-                <p className="text-[11px] text-slate-400">
+                {/* <p className="text-[11px] text-slate-400">
                   각 링크로 접속한 사람만 해당 팀의 조작 권한을 가집니다. 상대 팀에게 해당 팀의 전용 링크를 전달하세요.
-                </p>
+                </p> */}
 
                 <div className="space-y-2">
                   {/* 1. FIRST 팀장 전용 링크 */}

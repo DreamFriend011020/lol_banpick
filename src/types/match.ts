@@ -53,6 +53,7 @@ export interface SeriesState {
   drive_folder_id?: string;          // 지정 구글 드라이브 폴더 ID/링크
   drive_webhook_url?: string;        // 지정 구글 드라이브 웹앱 URL
   is_scrim?: boolean;                // 스크림(연습) 방 여부 (true일 경우 관리자 없이도 다음 세트 및 피어리스 진행 가능)
+  admin_key?: string;                // 공식 경기 생성 시 사용한 관리자 비밀번호 식별 키
 }
 
 /**

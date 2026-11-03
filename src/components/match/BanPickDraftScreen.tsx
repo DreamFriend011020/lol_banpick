@@ -75,16 +75,31 @@ export default function BanPickDraftScreen({
   const [adminAuthError, setAdminAuthError] = useState<string | null>(null);
   const [isVerifyingAdmin, setIsVerifyingAdmin] = useState<boolean>(false);
 
+  const bp = match.banpick_state;
+  const seriesState = useMemo(() => getSeriesState(match), [match]);
+  const isScrimRoom = useMemo(() => isScrimMatchRoom(match), [match]);
+
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const saved = window.sessionStorage.getItem(
+      const savedAuth = window.sessionStorage.getItem(
         'lol_banpick_admin_authenticated'
       );
-      if (saved === 'true') {
-        setIsAdminVerified(true);
+      const savedKey = window.sessionStorage.getItem('lol_banpick_admin_key');
+      const savedMaster = window.sessionStorage.getItem(
+        'lol_banpick_admin_is_master'
+      );
+      if (savedAuth === 'true') {
+        if (
+          savedMaster === 'true' ||
+          (savedKey && seriesState.admin_key && savedKey === seriesState.admin_key)
+        ) {
+          setIsAdminVerified(true);
+        } else {
+          setIsAdminVerified(false);
+        }
       }
     }
-  }, []);
+  }, [seriesState.admin_key]);
 
   const handleVerifyAdminInMatch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -94,7 +109,10 @@ export default function BanPickDraftScreen({
       const res = await fetch('/api/admin/auth', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: adminPasswordInput }),
+        body: JSON.stringify({
+          password: adminPasswordInput,
+          matchAdminKey: seriesState.admin_key ?? '',
+        }),
       });
       const data = await res.json();
       if (res.ok && data?.ok) {
@@ -102,6 +120,16 @@ export default function BanPickDraftScreen({
           window.sessionStorage.setItem(
             'lol_banpick_admin_authenticated',
             'true'
+          );
+          if (data.adminKey) {
+            window.sessionStorage.setItem(
+              'lol_banpick_admin_key',
+              String(data.adminKey)
+            );
+          }
+          window.sessionStorage.setItem(
+            'lol_banpick_admin_is_master',
+            data.isMaster ? 'true' : 'false'
           );
         }
         setIsAdminVerified(true);
@@ -161,9 +189,6 @@ export default function BanPickDraftScreen({
     return map;
   }, [champions]);
 
-  const bp = match.banpick_state;
-  const seriesState = useMemo(() => getSeriesState(match), [match]);
-  const isScrimRoom = useMemo(() => isScrimMatchRoom(match), [match]);
   const canControlNextGame = isScrimRoom || isAdminVerified;
   const fearlessIds = useMemo(() => getFearlessChampionIds(match), [match]);
   const blueFearlessPicks = useMemo(
@@ -607,15 +632,14 @@ export default function BanPickDraftScreen({
     return (
       <div
         key={`${side}-ban-${slotIndex}`}
-        className={`relative w-11 h-11 md:w-13 md:h-13 rounded-lg overflow-hidden border transition-all flex items-center justify-center bg-slate-900 ${
-          isCurrentBanSlot
-            ? side === 'BLUE'
-              ? 'border-blue-400 ring-2 ring-blue-400/60 animate-pulse'
-              : 'border-rose-400 ring-2 ring-rose-400/60 animate-pulse'
-            : championId
-              ? 'border-slate-700'
-              : 'border-slate-800/80'
-        }`}
+        className={`relative w-11 h-11 md:w-13 md:h-13 rounded-lg overflow-hidden border transition-all flex items-center justify-center bg-slate-900 ${isCurrentBanSlot
+          ? side === 'BLUE'
+            ? 'border-blue-400 ring-2 ring-blue-400/60 animate-pulse'
+            : 'border-rose-400 ring-2 ring-rose-400/60 animate-pulse'
+          : championId
+            ? 'border-slate-700'
+            : 'border-slate-800/80'
+          }`}
         title={champ ? `${champ.name} 밴` : `${slotIndex + 1}밴`}
       >
         {champ ? (
@@ -623,9 +647,8 @@ export default function BanPickDraftScreen({
             <img
               src={champ.imageUrl}
               alt={champ.name}
-              className={`w-full h-full object-cover ${
-                championId ? 'grayscale opacity-75' : 'opacity-90'
-              }`}
+              className={`w-full h-full object-cover ${championId ? 'grayscale opacity-75' : 'opacity-90'
+                }`}
             />
             <div className="absolute inset-0 flex items-center justify-center bg-rose-950/30">
               <div className="w-full h-0.5 bg-rose-500 rotate-45 shadow" />
@@ -678,12 +701,9 @@ export default function BanPickDraftScreen({
             handlePickSlotSwapClick(side, slotIndex);
           }
         }}
-        className={`relative h-[76px] md:h-[82px] rounded-xl overflow-hidden border transition-all flex items-center ${
-          isBlue ? 'flex-row' : 'flex-row-reverse text-right'
-        } ${
-          canSwapThisSide ? 'cursor-pointer hover:scale-[1.01]' : ''
-        } ${
-          isSwapSelected
+        className={`relative h-[76px] md:h-[82px] rounded-xl overflow-hidden border transition-all flex items-center ${isBlue ? 'flex-row' : 'flex-row-reverse text-right'
+          } ${canSwapThisSide ? 'cursor-pointer hover:scale-[1.01]' : ''
+          } ${isSwapSelected
             ? 'border-amber-400 bg-amber-950/40 ring-2 ring-amber-400 shadow-lg shadow-amber-500/20'
             : isCurrentPickSlot
               ? isBlue
@@ -694,7 +714,7 @@ export default function BanPickDraftScreen({
                   ? 'border-blue-500/30 bg-slate-900/90'
                   : 'border-rose-500/30 bg-slate-900/90'
                 : 'border-slate-800 bg-slate-900/40'
-        }`}
+          }`}
       >
         {/* 배경 스플래시 아트 */}
         {champ && (
@@ -705,24 +725,22 @@ export default function BanPickDraftScreen({
               className="w-full h-full object-cover object-top"
             />
             <div
-              className={`absolute inset-0 bg-gradient-to-${
-                isBlue ? 'r' : 'l'
-              } from-slate-950 via-slate-950/70 to-transparent`}
+              className={`absolute inset-0 bg-gradient-to-${isBlue ? 'r' : 'l'
+                } from-slate-950 via-slate-950/70 to-transparent`}
             />
           </div>
         )}
 
         {/* 챔피언 정사각형 초상화 영역 */}
         <div
-          className={`relative z-10 w-14 h-14 md:w-16 md:h-16 m-1.5 rounded-lg overflow-hidden border flex-shrink-0 flex items-center justify-center bg-slate-950 ${
-            isSwapSelected
-              ? 'border-amber-400'
-              : isCurrentPickSlot
-                ? isBlue
-                  ? 'border-blue-400'
-                  : 'border-rose-400'
-                : 'border-slate-700/80'
-          }`}
+          className={`relative z-10 w-14 h-14 md:w-16 md:h-16 m-1.5 rounded-lg overflow-hidden border flex-shrink-0 flex items-center justify-center bg-slate-950 ${isSwapSelected
+            ? 'border-amber-400'
+            : isCurrentPickSlot
+              ? isBlue
+                ? 'border-blue-400'
+                : 'border-rose-400'
+              : 'border-slate-700/80'
+            }`}
         >
           {champ ? (
             <img
@@ -740,9 +758,8 @@ export default function BanPickDraftScreen({
         {/* 텍스트 정보 영역 */}
         <div className="relative z-10 px-3 flex-1 min-w-0">
           <div
-            className={`flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider ${
-              isBlue ? 'text-blue-400' : 'text-rose-400 justify-end'
-            }`}
+            className={`flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider ${isBlue ? 'text-blue-400' : 'text-rose-400 justify-end'
+              }`}
           >
             <span className="px-1.5 py-0.5 rounded bg-slate-950/80 border border-slate-700 text-white">
               {POSITION_LABELS[slotIndex]}
@@ -804,14 +821,12 @@ export default function BanPickDraftScreen({
 
     return (
       <div
-        className={`mt-1.5 rounded-xl border p-2.5 bg-slate-900/85 ${
-          isBlue ? 'border-blue-500/30' : 'border-rose-500/30'
-        }`}
+        className={`mt-1.5 rounded-xl border p-2.5 bg-slate-900/85 ${isBlue ? 'border-blue-500/30' : 'border-rose-500/30'
+          }`}
       >
         <div
-          className={`flex items-center justify-between gap-1.5 mb-2 ${
-            isBlue ? 'flex-row' : 'flex-row-reverse'
-          }`}
+          className={`flex items-center justify-between gap-1.5 mb-2 ${isBlue ? 'flex-row' : 'flex-row-reverse'
+            }`}
         >
           <span className="text-[11px] font-extrabold text-amber-300 flex items-center gap-1">
             🔥 {teamName} 피어리스 금지 (전 세트 픽)
@@ -823,16 +838,15 @@ export default function BanPickDraftScreen({
 
         {setRows.length === 0 ? (
           <div className="py-2.5 text-center text-[11px] text-slate-500 bg-slate-950/60 rounded-lg border border-slate-800/60">
-            이전 세트에서 선택한 챔피언 없음 (2세트부터 누적 표시)
+
           </div>
         ) : (
           <div className="space-y-1.5">
             {setRows.map((rowChamps, setIdx) => (
               <div
                 key={`${side}-fearless-set-${setIdx}`}
-                className={`flex items-center gap-1.5 ${
-                  isBlue ? 'flex-row' : 'flex-row-reverse'
-                }`}
+                className={`flex items-center gap-1.5 ${isBlue ? 'flex-row' : 'flex-row-reverse'
+                  }`}
               >
                 <span className="text-[10px] font-extrabold text-slate-400 w-9 text-center flex-shrink-0 bg-slate-950/90 py-1 rounded border border-slate-800">
                   {setIdx + 1}세트
@@ -995,11 +1009,10 @@ export default function BanPickDraftScreen({
                     )}
 
                     <div
-                      className={`text-4xl font-black tabular-nums tracking-tight ${
-                        remainingSeconds <= 10
-                          ? 'text-rose-400 animate-pulse'
-                          : 'text-white'
-                      }`}
+                      className={`text-4xl font-black tabular-nums tracking-tight ${remainingSeconds <= 10
+                        ? 'text-rose-400 animate-pulse'
+                        : 'text-white'
+                        }`}
                     >
                       :{String(remainingSeconds).padStart(2, '0')}
                     </div>
@@ -1028,13 +1041,12 @@ export default function BanPickDraftScreen({
 
                   <div className="w-full max-w-xs h-2 bg-slate-800 rounded-full overflow-hidden mt-2">
                     <div
-                      className={`h-full transition-all duration-200 ${
-                        remainingSeconds <= 10
-                          ? 'bg-rose-500'
-                          : currentStep.side === 'BLUE'
-                            ? 'bg-blue-500'
-                            : 'bg-rose-500'
-                      }`}
+                      className={`h-full transition-all duration-200 ${remainingSeconds <= 10
+                        ? 'bg-rose-500'
+                        : currentStep.side === 'BLUE'
+                          ? 'bg-blue-500'
+                          : 'bg-rose-500'
+                        }`}
                       style={{ width: `${timerProgressPercent}%` }}
                     />
                   </div>
@@ -1049,11 +1061,10 @@ export default function BanPickDraftScreen({
                     ◀ LANE SWAP
                   </span>
                   <div
-                    className={`text-4xl font-black tabular-nums tracking-tight ${
-                      remainingSeconds <= 10
-                        ? 'text-rose-400 animate-pulse'
-                        : 'text-amber-300'
-                    }`}
+                    className={`text-4xl font-black tabular-nums tracking-tight ${remainingSeconds <= 10
+                      ? 'text-rose-400 animate-pulse'
+                      : 'text-amber-300'
+                      }`}
                   >
                     :{String(remainingSeconds).padStart(2, '0')}
                   </div>
@@ -1085,9 +1096,8 @@ export default function BanPickDraftScreen({
 
                 <div className="w-full max-w-xs h-2 bg-slate-800 rounded-full overflow-hidden mt-2">
                   <div
-                    className={`h-full transition-all duration-200 ${
-                      remainingSeconds <= 10 ? 'bg-rose-500' : 'bg-amber-400'
-                    }`}
+                    className={`h-full transition-all duration-200 ${remainingSeconds <= 10 ? 'bg-rose-500' : 'bg-amber-400'
+                      }`}
                     style={{ width: `${timerProgressPercent}%` }}
                   />
                 </div>
@@ -1095,181 +1105,10 @@ export default function BanPickDraftScreen({
             )}
 
             {match.status === 'COMPLETED' && (
-              <div className="mt-2 flex flex-col items-center gap-2.5 w-full">
+              <div className="mt-2 flex flex-col items-center gap-1.5 w-full">
                 <div className="px-4 py-1.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-sm font-bold">
                   {seriesState.current_game}세트 밴픽 및 라인 배치가 완료되었습니다!
                 </div>
-                {savedNotice && (
-                  <span className="text-xs text-amber-300 font-medium text-center">
-                    ✓ {savedNotice}
-                  </span>
-                )}
-                <div className="flex flex-wrap items-center justify-center gap-2 w-full max-w-md">
-                  <input
-                    type="text"
-                    value={customDriveFolderInput}
-                    onChange={(e) => setCustomDriveFolderInput(e.target.value)}
-                    placeholder="다른 구글 드라이브 폴더 링크/ID (비우면 기본 폴더)"
-                    className="flex-1 min-w-[200px] rounded-lg bg-slate-950 border border-slate-700 px-2.5 py-1 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
-                  />
-                  <button
-                    type="button"
-                    onClick={handleManualExport}
-                    disabled={isExportingImage}
-                    className="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 text-xs font-bold text-slate-200 transition-colors disabled:opacity-50 whitespace-nowrap"
-                  >
-                    {isExportingImage
-                      ? '이미지 저장 중...'
-                      : '구글 드라이브 & 내 PC 저장'}
-                  </button>
-                </div>
-
-                {/* 다전제 다음 세트(Game N+1) 패배팀 -> FIRST 자동 배정 및 시작 컨트롤 (스크림 방은 관리자 없이 즉시 진행 가능, 공식 매치는 관리자 전용) */}
-                {canControlNextGame ? (
-                  <div className="w-full max-w-lg mt-1 rounded-xl bg-slate-950/90 border border-amber-500/40 p-3 space-y-2.5 text-left">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-extrabold text-amber-300">
-                        {isScrimRoom
-                          ? `🎮 [스크림 다전제] ${seriesState.current_game}세트 결과 선택 (패배팀 → ${seriesState.current_game + 1}세트 FIRST)`
-                          : `👑 [관리자 전용] ${seriesState.current_game}세트 승패 확정 (패배팀 → ${seriesState.current_game + 1}세트 FIRST)`}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => setNextGameFearless((prev) => !prev)}
-                        className={`px-2.5 py-0.5 rounded text-[11px] font-extrabold border transition-colors ${
-                          nextGameFearless
-                            ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
-                            : 'bg-slate-800 text-slate-400 border-slate-700'
-                        }`}
-                      >
-                        🔥 하드 피어리스: {nextGameFearless ? 'ON' : 'OFF'}
-                      </button>
-                    </div>
-
-                    <p className="text-[11px] text-slate-400">
-                      인게임 세트가 끝난 뒤 <strong>이번 세트 패배팀</strong>을 선택하세요. 패배팀이 다음 세트 <strong>FIRST(선결정권)</strong>, 승리팀이 <strong>SECOND(후결정권)</strong>로 자동 배정됩니다.
-                    </p>
-
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setNextGameFirstTeam(seriesState.team_a_name)
-                        }
-                        className={`py-2 px-2.5 rounded-lg text-xs font-bold border transition-all text-left ${
-                          nextGameFirstTeam === seriesState.team_a_name
-                            ? 'border-amber-400 bg-amber-500/20 text-amber-200 ring-1 ring-amber-400/50'
-                            : 'border-slate-800 bg-slate-900 text-slate-400 hover:border-slate-700'
-                        }`}
-                      >
-                        <div className="text-[11px] text-rose-300 font-extrabold">
-                          {seriesState.current_game}세트 패배: {seriesState.team_a_name}{' '}
-                          <span className="text-slate-400 font-normal">
-                            ({seriesState.team_b_name} 승)
-                          </span>
-                        </div>
-                        <div className="mt-0.5 text-amber-300 font-black">
-                          → {seriesState.current_game + 1}세트 FIRST:{' '}
-                          {seriesState.team_a_name}
-                        </div>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setNextGameFirstTeam(seriesState.team_b_name)
-                        }
-                        className={`py-2 px-2.5 rounded-lg text-xs font-bold border transition-all text-left ${
-                          nextGameFirstTeam === seriesState.team_b_name
-                            ? 'border-amber-400 bg-amber-500/20 text-amber-200 ring-1 ring-amber-400/50'
-                            : 'border-slate-800 bg-slate-900 text-slate-400 hover:border-slate-700'
-                        }`}
-                      >
-                        <div className="text-[11px] text-rose-300 font-extrabold">
-                          {seriesState.current_game}세트 패배: {seriesState.team_b_name}{' '}
-                          <span className="text-slate-400 font-normal">
-                            ({seriesState.team_a_name} 승)
-                          </span>
-                        </div>
-                        <div className="mt-0.5 text-amber-300 font-black">
-                          → {seriesState.current_game + 1}세트 FIRST:{' '}
-                          {seriesState.team_b_name}
-                        </div>
-                      </button>
-                    </div>
-
-                    <button
-                      type="button"
-                      disabled={isSubmitting}
-                      onClick={() =>
-                        onDispatchBanPick({
-                          type: 'START_NEXT_GAME',
-                          nextFirstTeamName: nextGameFirstTeam,
-                          fearlessEnabled: nextGameFearless,
-                        })
-                      }
-                      className="w-full py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-extrabold transition-all disabled:opacity-50"
-                    >
-                      패배팀({nextGameFirstTeam})을 FIRST로 확정하고{' '}
-                      {seriesState.current_game + 1}세트 RoFS 시작하기 →
-                    </button>
-                  </div>
-                ) : (
-                  <div className="w-full max-w-lg mt-1 rounded-xl bg-slate-950/90 border border-slate-800 p-3 space-y-2 text-center">
-                    <div className="text-xs font-extrabold text-amber-300">
-                      🔒 다음 세트 진행 대기 중 (관리자 전용 승패 결정)
-                    </div>
-                    <p className="text-[11px] text-slate-400">
-                      인게임 경기가 끝난 후 <strong>관리자(운영진)</strong>가 이번 세트의 승패 결과를 확정하면, 패배팀이 다음 세트 FIRST 팀으로 배정되어 자동으로 다음 세트 RoFS 화면이 시작됩니다.
-                    </p>
-                    {!showAdminUnlockInput ? (
-                      <button
-                        type="button"
-                        onClick={() => setShowAdminUnlockInput(true)}
-                        className="px-3 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-[11px] font-bold text-slate-300 transition-colors"
-                      >
-                        🔑 운영진(관리자) 암호로 승패 결정 권한 열기
-                      </button>
-                    ) : (
-                      <form
-                        onSubmit={handleVerifyAdminInMatch}
-                        className="flex flex-col sm:flex-row items-center justify-center gap-1.5 pt-1"
-                      >
-                        <input
-                          type="password"
-                          required
-                          value={adminPasswordInput}
-                          onChange={(e) =>
-                            setAdminPasswordInput(e.target.value)
-                          }
-                          placeholder="관리자 암호 입력"
-                          className="rounded-lg bg-slate-900 border border-slate-700 px-2.5 py-1 text-xs text-white focus:outline-none focus:border-amber-400"
-                        />
-                        <button
-                          type="submit"
-                          disabled={isVerifyingAdmin}
-                          className="px-3 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-extrabold"
-                        >
-                          {isVerifyingAdmin ? '확인 중...' : '인증'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setShowAdminUnlockInput(false);
-                            setAdminAuthError(null);
-                          }}
-                          className="px-2 py-1 rounded-lg bg-slate-800 text-xs text-slate-400"
-                        >
-                          취소
-                        </button>
-                        {adminAuthError && (
-                          <span className="text-[11px] text-rose-400 block w-full">
-                            {adminAuthError}
-                          </span>
-                        )}
-                      </form>
-                    )}
-                  </div>
-                )}
               </div>
             )}
           </div>
@@ -1301,11 +1140,11 @@ export default function BanPickDraftScreen({
 
             {bp && (
               <div className="flex items-center gap-1.5">
-                {[3, 4].map((idx) =>
+                {[4, 3].map((idx) =>
                   renderBanSlot('RED', idx, bp.red_bans[idx])
                 )}
                 <div className="w-px h-8 bg-slate-700 mx-1" />
-                {[0, 1, 2].map((idx) =>
+                {[2, 1, 0].map((idx) =>
                   renderBanSlot('RED', idx, bp.red_bans[idx])
                 )}
               </div>
@@ -1330,8 +1169,9 @@ export default function BanPickDraftScreen({
           {renderTeamFearlessSection('BLUE')}
         </section>
 
-        {/* 중앙 영역: 챔피언 선택칸 및 60초 라인 스왑 보드 높이를 아래로 넉넉하게 확장 */}
-        <section className="lg:col-span-6 bg-slate-900/80 border border-slate-800 rounded-2xl p-4 flex flex-col justify-between h-[580px] md:h-[640px]">
+        {/* 중앙 영역: 챔피언 선택칸 및 60초 라인 스왑 보드 + 하단 밴픽 완료 컨트롤 */}
+        <div className="lg:col-span-6 flex flex-col gap-2.5">
+          <section className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 flex flex-col justify-between h-[580px] md:h-[640px]">
           {inSwapPhase ? (
             /* ===============================================================
                [60초 라인 스왑 페이즈 전용 중앙 패널]
@@ -1364,11 +1204,10 @@ export default function BanPickDraftScreen({
                     return (
                       <div
                         key={`swap-row-${idx}`}
-                        className={`flex items-center justify-between p-2.5 rounded-xl border transition-all ${
-                          isSelected
-                            ? 'border-amber-400 bg-amber-500/15'
-                            : 'border-slate-800 bg-slate-950/70'
-                        }`}
+                        className={`flex items-center justify-between p-2.5 rounded-xl border transition-all ${isSelected
+                          ? 'border-amber-400 bg-amber-500/15'
+                          : 'border-slate-800 bg-slate-950/70'
+                          }`}
                       >
                         <div className="flex items-center gap-3">
                           <span className="w-24 text-xs font-black px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-amber-300 text-center">
@@ -1425,13 +1264,12 @@ export default function BanPickDraftScreen({
                             onClick={() =>
                               handlePickSlotSwapClick(viewerSide, idx)
                             }
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
-                              isSelected
-                                ? 'bg-amber-400 text-slate-950'
-                                : selectedSwapSlot !== null
-                                  ? 'bg-cyan-500 hover:bg-cyan-400 text-slate-950'
-                                  : 'bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700'
-                            } disabled:opacity-30 disabled:cursor-not-allowed`}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${isSelected
+                              ? 'bg-amber-400 text-slate-950'
+                              : selectedSwapSlot !== null
+                                ? 'bg-cyan-500 hover:bg-cyan-400 text-slate-950'
+                                : 'bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700'
+                              } disabled:opacity-30 disabled:cursor-not-allowed`}
                           >
                             {isSelected
                               ? '선택 취소'
@@ -1535,11 +1373,10 @@ export default function BanPickDraftScreen({
                       key={role.tag}
                       type="button"
                       onClick={() => setSelectedTag(role.tag)}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors ${
-                        selectedTag === role.tag
-                          ? 'bg-amber-500 text-slate-950'
-                          : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                      }`}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors ${selectedTag === role.tag
+                        ? 'bg-amber-500 text-slate-950'
+                        : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                        }`}
                     >
                       {role.label}
                     </button>
@@ -1563,11 +1400,10 @@ export default function BanPickDraftScreen({
                         type="button"
                         disabled={!isMyTurn || isSubmitting}
                         onClick={() => handleSelectChampion('NO_BAN')}
-                        className={`group flex flex-col items-center p-1.5 rounded-xl border transition-all ${
-                          bp?.hovered_champion_id === 'NO_BAN'
-                            ? 'border-amber-400 bg-amber-500/20 ring-2 ring-amber-400/50'
-                            : 'border-slate-800 bg-slate-950/70 hover:border-slate-600'
-                        } disabled:opacity-40 disabled:cursor-not-allowed`}
+                        className={`group flex flex-col items-center p-1.5 rounded-xl border transition-all ${bp?.hovered_champion_id === 'NO_BAN'
+                          ? 'border-amber-400 bg-amber-500/20 ring-2 ring-amber-400/50'
+                          : 'border-slate-800 bg-slate-950/70 hover:border-slate-600'
+                          } disabled:opacity-40 disabled:cursor-not-allowed`}
                       >
                         <div className="w-14 h-14 rounded-lg bg-slate-900 border border-slate-700 flex items-center justify-center text-xs font-bold text-slate-400">
                           기권
@@ -1589,31 +1425,28 @@ export default function BanPickDraftScreen({
                           type="button"
                           disabled={!isMyTurn || isUnavailable || isSubmitting}
                           onClick={() => handleSelectChampion(champ.id)}
-                          className={`group relative flex flex-col items-center p-1.5 rounded-xl border transition-all ${
-                            isHovered
-                              ? 'border-amber-400 bg-amber-500/20 ring-2 ring-amber-400/60 scale-[1.02]'
-                              : isUnavailable
-                                ? 'border-slate-900 bg-slate-950/30 opacity-35 cursor-not-allowed'
-                                : 'border-slate-800/80 bg-slate-950/60 hover:border-slate-600'
-                          } disabled:cursor-not-allowed`}
+                          className={`group relative flex flex-col items-center p-1.5 rounded-xl border transition-all ${isHovered
+                            ? 'border-amber-400 bg-amber-500/20 ring-2 ring-amber-400/60 scale-[1.02]'
+                            : isUnavailable
+                              ? 'border-slate-900 bg-slate-950/30 opacity-35 cursor-not-allowed'
+                              : 'border-slate-800/80 bg-slate-950/60 hover:border-slate-600'
+                            } disabled:cursor-not-allowed`}
                         >
                           <div className="relative w-14 h-14 rounded-lg overflow-hidden bg-slate-900">
                             <img
                               src={champ.imageUrl}
                               alt={champ.name}
                               loading="lazy"
-                              className={`w-full h-full object-cover ${
-                                isUnavailable ? 'grayscale' : ''
-                              }`}
+                              className={`w-full h-full object-cover ${isUnavailable ? 'grayscale' : ''
+                                }`}
                             />
                             {isUnavailable && (
                               <div className="absolute inset-0 bg-slate-950/75 flex items-center justify-center">
                                 <span
-                                  className={`text-[10px] font-black uppercase ${
-                                    isFearlessBanned
-                                      ? 'text-amber-400'
-                                      : 'text-rose-400'
-                                  }`}
+                                  className={`text-[10px] font-black uppercase ${isFearlessBanned
+                                    ? 'text-amber-400'
+                                    : 'text-rose-400'
+                                    }`}
                                 >
                                   {isFearlessBanned ? '피어리스' : '불가'}
                                 </span>
@@ -1649,7 +1482,7 @@ export default function BanPickDraftScreen({
                               {bp.hovered_champion_id === 'NO_BAN'
                                 ? '노밴 (기권)'
                                 : championMap.get(bp.hovered_champion_id)
-                                    ?.name ?? bp.hovered_champion_id}
+                                  ?.name ?? bp.hovered_champion_id}
                             </strong>{' '}
                             — 우측 버튼을 눌러 확정하세요.
                           </span>
@@ -1689,11 +1522,10 @@ export default function BanPickDraftScreen({
                       !isMyTurn || !bp?.hovered_champion_id || isSubmitting
                     }
                     onClick={handleLockIn}
-                    className={`w-full sm:w-auto px-7 py-2.5 rounded-xl font-extrabold text-sm transition-all ${
-                      currentStep?.actionType === 'BAN'
-                        ? 'bg-rose-600 hover:bg-rose-500 text-white shadow-lg shadow-rose-600/20'
-                        : 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-lg shadow-amber-500/20'
-                    } disabled:opacity-35 disabled:cursor-not-allowed`}
+                    className={`w-full sm:w-auto px-7 py-2.5 rounded-xl font-extrabold text-sm transition-all ${currentStep?.actionType === 'BAN'
+                      ? 'bg-rose-600 hover:bg-rose-500 text-white shadow-lg shadow-rose-600/20'
+                      : 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-lg shadow-amber-500/20'
+                      } disabled:opacity-35 disabled:cursor-not-allowed`}
                   >
                     {isSubmitting
                       ? '동기화 중...'
@@ -1705,7 +1537,177 @@ export default function BanPickDraftScreen({
               </div>
             </>
           )}
-        </section>
+          </section>
+
+          {/* 밴픽 종료(COMPLETED) 시 선택 완료 박스 아래에 표시되는 드라이브 저장 및 다음 세트 진행 컨트롤 */}
+          {match.status === 'COMPLETED' && (
+            <section className="bg-slate-900/90 border border-emerald-500/40 rounded-2xl p-4 flex flex-col items-center gap-3 shadow-xl">
+              {savedNotice && (
+                <span className="text-xs text-amber-300 font-medium text-center">
+                  ✓ {savedNotice}
+                </span>
+              )}
+
+              <div className="flex flex-wrap items-center justify-center gap-2 w-full">
+                <input
+                  type="text"
+                  value={customDriveFolderInput}
+                  onChange={(e) => setCustomDriveFolderInput(e.target.value)}
+                  placeholder="다른 구글 드라이브 폴더 링크/ID (비우면 기본 폴더)"
+                  className="flex-1 min-w-[200px] rounded-lg bg-slate-950 border border-slate-700 px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
+                />
+                <button
+                  type="button"
+                  onClick={handleManualExport}
+                  disabled={isExportingImage}
+                  className="px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 text-xs font-bold text-slate-200 transition-colors disabled:opacity-50 whitespace-nowrap"
+                >
+                  {isExportingImage
+                    ? '이미지 저장 중...'
+                    : '구글 드라이브 & 내 PC 저장'}
+                </button>
+              </div>
+
+              {/* 다전제 다음 세트(Game N+1) 승리팀 선택 -> 패배팀 FIRST 자동 배정 및 시작 컨트롤 */}
+              {canControlNextGame ? (
+                <div className="w-full rounded-xl bg-slate-950/90 border border-amber-500/40 p-3 space-y-2.5 text-left">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-extrabold text-amber-300">
+                      {isScrimRoom
+                        ? `🎮 [스크림 다전제] ${seriesState.current_game}세트 승리팀 선택`
+                        : `👑 [관리자 전용] ${seriesState.current_game}세트 승리팀 확정`}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setNextGameFearless((prev) => !prev)}
+                      className={`px-2.5 py-0.5 rounded text-[11px] font-extrabold border transition-colors ${
+                        nextGameFearless
+                          ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                          : 'bg-slate-800 text-slate-400 border-slate-700'
+                      }`}
+                    >
+                      🔥 하드 피어리스: {nextGameFearless ? 'ON' : 'OFF'}
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setNextGameFirstTeam(seriesState.team_b_name)
+                      }
+                      className={`py-2 px-2.5 rounded-lg text-xs font-bold border transition-all text-left ${
+                        nextGameFirstTeam === seriesState.team_b_name
+                          ? 'border-amber-400 bg-amber-500/20 text-amber-200 ring-1 ring-amber-400/50'
+                          : 'border-slate-800 bg-slate-900 text-slate-400 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="text-[11px] text-emerald-300 font-extrabold">
+                        🏆 {seriesState.current_game}세트 승리: {seriesState.team_a_name}
+                      </div>
+                      <div className="mt-0.5 text-amber-300 font-black">
+                        → {seriesState.current_game + 1}세트 FIRST:{' '}
+                        {seriesState.team_b_name}
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setNextGameFirstTeam(seriesState.team_a_name)
+                      }
+                      className={`py-2 px-2.5 rounded-lg text-xs font-bold border transition-all text-left ${
+                        nextGameFirstTeam === seriesState.team_a_name
+                          ? 'border-amber-400 bg-amber-500/20 text-amber-200 ring-1 ring-amber-400/50'
+                          : 'border-slate-800 bg-slate-900 text-slate-400 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="text-[11px] text-emerald-300 font-extrabold">
+                        🏆 {seriesState.current_game}세트 승리: {seriesState.team_b_name}
+                      </div>
+                      <div className="mt-0.5 text-amber-300 font-black">
+                        → {seriesState.current_game + 1}세트 FIRST:{' '}
+                        {seriesState.team_a_name}
+                      </div>
+                    </button>
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={isSubmitting}
+                    onClick={() =>
+                      onDispatchBanPick({
+                        type: 'START_NEXT_GAME',
+                        nextFirstTeamName: nextGameFirstTeam,
+                        fearlessEnabled: nextGameFearless,
+                      })
+                    }
+                    className="w-full py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-extrabold transition-all disabled:opacity-50"
+                  >
+                    승리팀(
+                    {nextGameFirstTeam === seriesState.team_a_name
+                      ? seriesState.team_b_name
+                      : seriesState.team_a_name}
+                    ) 확정 · {seriesState.current_game + 1}세트 RoFS 시작하기 →
+                  </button>
+                </div>
+              ) : (
+                <div className="w-full rounded-xl bg-slate-950/90 border border-slate-800 p-3 space-y-2 text-center">
+                  <div className="text-xs font-extrabold text-amber-300">
+                    🔒 다음 세트 진행 대기 중 (관리자 전용 승패 결정)
+                  </div>
+                  <p className="text-[11px] text-slate-400">
+                    인게임 경기가 끝난 후 <strong>관리자(운영진)</strong>가 이번 세트의 승패 결과를 확정하면, 패배팀이 다음 세트 FIRST 팀으로 배정되어 자동으로 다음 세트 RoFS 화면이 시작됩니다.
+                  </p>
+                  {!showAdminUnlockInput ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowAdminUnlockInput(true)}
+                      className="px-3 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-[11px] font-bold text-slate-300 transition-colors"
+                    >
+                      🔑 운영진(관리자) 암호로 승패 결정 권한 열기
+                    </button>
+                  ) : (
+                    <form
+                      onSubmit={handleVerifyAdminInMatch}
+                      className="flex flex-col sm:flex-row items-center justify-center gap-1.5 pt-1"
+                    >
+                      <input
+                        type="password"
+                        required
+                        value={adminPasswordInput}
+                        onChange={(e) => setAdminPasswordInput(e.target.value)}
+                        placeholder="관리자 암호 입력"
+                        className="rounded-lg bg-slate-900 border border-slate-700 px-2.5 py-1 text-xs text-white focus:outline-none focus:border-amber-400"
+                      />
+                      <button
+                        type="submit"
+                        disabled={isVerifyingAdmin}
+                        className="px-3 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-extrabold"
+                      >
+                        {isVerifyingAdmin ? '확인 중...' : '인증'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowAdminUnlockInput(false);
+                          setAdminAuthError(null);
+                        }}
+                        className="px-2 py-1 rounded-lg bg-slate-800 text-xs text-slate-400"
+                      >
+                        취소
+                      </button>
+                      {adminAuthError && (
+                        <span className="text-[11px] text-rose-400 block w-full">
+                          {adminAuthError}
+                        </span>
+                      )}
+                    </form>
+                  )}
+                </div>
+              )}
+            </section>
+          )}
+        </div>
 
         {/* 우측: 레드 진영 5인 픽 슬롯 + 레드 팀 전 세트 픽(피어리스 금지) */}
         <section className="lg:col-span-3 flex flex-col justify-start gap-1.5">

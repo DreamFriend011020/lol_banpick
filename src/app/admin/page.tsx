@@ -25,10 +25,14 @@ interface CsvRowPreview {
 }
 
 const ADMIN_AUTH_STORAGE_KEY = 'lol_banpick_admin_authenticated';
+const ADMIN_KEY_STORAGE_KEY = 'lol_banpick_admin_key';
+const ADMIN_MASTER_STORAGE_KEY = 'lol_banpick_admin_is_master';
 
 export default function AdminPage() {
   // 관리자 암호 인증 상태
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [currentAdminKey, setCurrentAdminKey] = useState<string>('');
+  const [isMasterAdmin, setIsMasterAdmin] = useState<boolean>(false);
   const [isCheckingAuth, setIsCheckingAuth] = useState<boolean>(true);
   const [passwordInput, setPasswordInput] = useState<string>('');
   const [authError, setAuthError] = useState<string | null>(null);
@@ -88,8 +92,14 @@ export default function AdminPage() {
   useEffect(() => {
     if (typeof window !== 'undefined') {
       const savedAuth = window.sessionStorage.getItem(ADMIN_AUTH_STORAGE_KEY);
-      if (savedAuth === 'true') {
+      const savedKey = window.sessionStorage.getItem(ADMIN_KEY_STORAGE_KEY);
+      const savedMaster = window.sessionStorage.getItem(
+        ADMIN_MASTER_STORAGE_KEY
+      );
+      if (savedAuth === 'true' && savedKey) {
         setIsAuthenticated(true);
+        setCurrentAdminKey(savedKey);
+        setIsMasterAdmin(savedMaster === 'true');
         fetchMatches(true);
       }
       setIsCheckingAuth(false);
@@ -110,8 +120,19 @@ export default function AdminPage() {
       const data = await res.json();
 
       if (res.ok && data?.ok) {
+        const resolvedKey = String(data.adminKey ?? passwordInput.trim());
+        const resolvedMaster = Boolean(data.isMaster);
         window.sessionStorage.setItem(ADMIN_AUTH_STORAGE_KEY, 'true');
+        window.sessionStorage.setItem(ADMIN_KEY_STORAGE_KEY, resolvedKey);
+        window.sessionStorage.setItem(
+          ADMIN_MASTER_STORAGE_KEY,
+          resolvedMaster ? 'true' : 'false'
+        );
         setIsAuthenticated(true);
+        setCurrentAdminKey(resolvedKey);
+        setIsMasterAdmin(resolvedMaster);
+        setActiveListTab('OFFICIAL');
+        setSelectedMatchIds([]);
         setPasswordInput('');
         await fetchMatches();
       } else {
@@ -127,8 +148,14 @@ export default function AdminPage() {
   const handleAdminLogout = () => {
     if (typeof window !== 'undefined') {
       window.sessionStorage.removeItem(ADMIN_AUTH_STORAGE_KEY);
+      window.sessionStorage.removeItem(ADMIN_KEY_STORAGE_KEY);
+      window.sessionStorage.removeItem(ADMIN_MASTER_STORAGE_KEY);
     }
     setIsAuthenticated(false);
+    setCurrentAdminKey('');
+    setIsMasterAdmin(false);
+    setActiveListTab('OFFICIAL');
+    setSelectedMatchIds([]);
     setPasswordInput('');
   };
 
@@ -168,6 +195,7 @@ export default function AdminPage() {
           drive_folder_id: driveFolderId.trim() || undefined,
           drive_webhook_url: driveWebhookUrl.trim() || undefined,
           is_scrim: false,
+          admin_key: currentAdminKey,
         }),
       });
       const data = await res.json();
@@ -327,11 +355,12 @@ export default function AdminPage() {
         ...r,
         auto_save_enabled: autoSaveEnabled,
         is_scrim: false,
+        admin_key: currentAdminKey,
       }));
       const res = await fetch('/api/matches', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ matches: payload }),
+        body: JSON.stringify({ matches: payload, admin_key: currentAdminKey }),
       });
       const data = await res.json();
       if (!data.ok) {
@@ -507,11 +536,22 @@ export default function AdminPage() {
     );
   };
 
-  // 관리자 생성 공식 경기 vs 메인 화면에서 생성된 자유 스크림 방 분리
-  const officialMatches = matches.filter((m) => !isScrimMatchRoom(m));
-  const scrimMatches = matches.filter((m) => isScrimMatchRoom(m));
+  // 관리자 생성 공식 경기(입력한 관리자 비밀번호별로 분리) vs 메인 화면에서 생성된 자유 스크림 방(하드코딩 마스터 암호 전용)
+  const officialMatches = matches.filter((m) => {
+    if (isScrimMatchRoom(m)) return false;
+    const matchAdminKey = getSeriesState(m).admin_key;
+    if (!matchAdminKey) {
+      return isMasterAdmin;
+    }
+    return matchAdminKey === currentAdminKey;
+  });
+  const scrimMatches = isMasterAdmin
+    ? matches.filter((m) => isScrimMatchRoom(m))
+    : [];
   const visibleMatches =
-    activeListTab === 'OFFICIAL' ? officialMatches : scrimMatches;
+    activeListTab === 'SCRIM' && isMasterAdmin
+      ? scrimMatches
+      : officialMatches;
 
   // 현재 탭의 체크박스 전체 선택 / 해제
   const isAllSelected =
@@ -983,20 +1023,22 @@ export default function AdminPage() {
               >
                 🏆 공식 대회 매치 — 관리자 생성 ({officialMatches.length})
               </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveListTab('SCRIM');
-                  setSelectedMatchIds([]);
-                }}
-                className={`px-4 py-2 rounded-xl text-xs font-extrabold border transition-all ${
-                  activeListTab === 'SCRIM'
-                    ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-lg shadow-emerald-500/20'
-                    : 'bg-slate-950 text-slate-400 border-slate-800 hover:bg-slate-800'
-                }`}
-              >
-                🎮 자유 스크림 방 — 일반 생성 ({scrimMatches.length})
-              </button>
+              {isMasterAdmin && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveListTab('SCRIM');
+                    setSelectedMatchIds([]);
+                  }}
+                  className={`px-4 py-2 rounded-xl text-xs font-extrabold border transition-all ${
+                    activeListTab === 'SCRIM'
+                      ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-lg shadow-emerald-500/20'
+                      : 'bg-slate-950 text-slate-400 border-slate-800 hover:bg-slate-800'
+                  }`}
+                >
+                  🎮 자유 스크림 방 — 일반 생성 ({scrimMatches.length})
+                </button>
+              )}
               {selectedMatchIds.length > 0 && (
                 <span className="text-xs font-extrabold px-2.5 py-1 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40">
                   {selectedMatchIds.length}개 선택됨
@@ -1132,22 +1174,9 @@ export default function AdminPage() {
                         <td className="py-3 px-3">
                           <div className="flex flex-col gap-1.5">
                             <span className="text-[11px] text-slate-400">
-                              {series.current_game}세트 패배팀 클릭 시 즉시 {series.current_game + 1}세트 시작:
+                              {series.current_game}세트 승리팀 클릭 시 즉시 {series.current_game + 1}세트 시작:
                             </span>
                             <div className="flex flex-wrap items-center gap-1.5">
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  handleAdminConfirmSetLoserAndStartNext(
-                                    m,
-                                    series.team_a_name
-                                  )
-                                }
-                                className="px-2.5 py-1 rounded-lg bg-slate-950 hover:bg-amber-500/20 text-[11px] font-bold text-amber-300 border border-amber-500/40 transition-colors"
-                              >
-                                {series.team_a_name} 패 ({series.team_b_name} 승) →{' '}
-                                {series.current_game + 1}세트 FIRST: {series.team_a_name}
-                              </button>
                               <button
                                 type="button"
                                 onClick={() =>
@@ -1156,10 +1185,23 @@ export default function AdminPage() {
                                     series.team_b_name
                                   )
                                 }
+                                className="px-2.5 py-1 rounded-lg bg-slate-950 hover:bg-amber-500/20 text-[11px] font-bold text-amber-300 border border-amber-500/40 transition-colors"
+                              >
+                                🏆 {series.team_a_name} 승리 →{' '}
+                                {series.current_game + 1}세트 FIRST: {series.team_b_name}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleAdminConfirmSetLoserAndStartNext(
+                                    m,
+                                    series.team_a_name
+                                  )
+                                }
                                 className="px-2.5 py-1 rounded-lg bg-slate-950 hover:bg-cyan-500/20 text-[11px] font-bold text-cyan-300 border border-cyan-500/40 transition-colors"
                               >
-                                {series.team_b_name} 패 ({series.team_a_name} 승) →{' '}
-                                {series.current_game + 1}세트 FIRST: {series.team_b_name}
+                                🏆 {series.team_b_name} 승리 →{' '}
+                                {series.current_game + 1}세트 FIRST: {series.team_a_name}
                               </button>
                             </div>
                           </div>

@@ -21,7 +21,7 @@ import {
   TOURNAMENT_DRAFT_SEQUENCE,
   TURN_DURATION_SECONDS,
 } from '../../lib/banpickMachine';
-import { fetchLatestChampions } from '../../lib/ddragon';
+import { fetchLatestChampions, matchesChampionSearch } from '../../lib/ddragon';
 import { saveBanPickScreenForStaff } from '../../lib/exportBanPickImage';
 import { ViewerRole } from './RofsSelectionScreen';
 
@@ -485,18 +485,13 @@ export default function BanPickDraftScreen({
     return () => window.clearInterval(intervalId);
   }, [match.status]);
 
-  // 4. 검색창(한글명/영문명) 및 역할군 필터링
+  // 4. 검색창(한글명/영문명/띄어쓰기 무시/초성/약어) 및 역할군 필터링
   const filteredChampions = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
     return champions.filter((champ) => {
       const matchesTag =
         selectedTag === 'ALL' || champ.tags.includes(selectedTag);
       if (!matchesTag) return false;
-      if (!q) return true;
-      return (
-        champ.name.toLowerCase().includes(q) ||
-        champ.id.toLowerCase().includes(q)
-      );
+      return matchesChampionSearch(champ, searchQuery);
     });
   }, [champions, searchQuery, selectedTag]);
 
@@ -1369,7 +1364,7 @@ export default function BanPickDraftScreen({
                       type="text"
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder="챔피언 검색 (예: 아리, 리 신, Ahri)..."
+                      placeholder="챔피언 검색 (예: 리신, 미포, 트페, ㄹㅅ, Ahri)..."
                       className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3.5 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
                     />
                     {searchQuery && (
@@ -1390,13 +1385,19 @@ export default function BanPickDraftScreen({
                   )}
                 </div>
 
-                {/* 역할군 필터 탭 */}
+                {/* 역할군 필터 탭 (이미 선택된 카테고리를 다시 클릭하면 'ALL'로 복귀) */}
                 <div className="flex flex-wrap gap-1.5">
                   {ROLE_FILTERS.map((role) => (
                     <button
                       key={role.tag}
                       type="button"
-                      onClick={() => setSelectedTag(role.tag)}
+                      onClick={() =>
+                        setSelectedTag((prev) =>
+                          prev === role.tag && role.tag !== 'ALL'
+                            ? 'ALL'
+                            : role.tag
+                        )
+                      }
                       className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors ${selectedTag === role.tag
                         ? 'bg-amber-500 text-slate-950'
                         : 'bg-slate-800 text-slate-300 hover:bg-slate-700'

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const HARDCODED_MASTER_PASSWORD = 'ssussandbox';
+const HARDCODED_MASTER_PASSWORD = 'dlwjddn1020';
 
 function getAllowedAdminPasswords(): Set<string> {
   const rawValues: string[] = [

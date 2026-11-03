@@ -54,15 +54,14 @@ async function uploadViaAppsScriptWebhook(params: {
     }
     return {
       ok: false,
-      error: data?.error || `Apps Script 응답 오류 (${res.status})`,
+      error:
+        "저장하려는 구글 드라이브 폴더의 공유 설정이 '링크가 있는 모든 사용자 - 편집 가능(편집자)' 권한으로 설정되어 있지 않아 실패했습니다. 폴더 공유 권한을 변경해 주세요.",
     };
-  } catch (err) {
+  } catch {
     return {
       ok: false,
       error:
-        err instanceof Error
-          ? err.message
-          : '구글 드라이브 웹훅 전송 중 오류가 발생했습니다.',
+        "저장하려는 구글 드라이브 폴더의 공유 설정이 '링크가 있는 모든 사용자 - 편집 가능(편집자)' 권한으로 설정되어 있지 않거나 전송에 실패했습니다. 폴더 공유 권한을 변경해 주세요.",
     };
   }
 }
@@ -167,7 +166,7 @@ export async function POST(req: NextRequest) {
       }
     } else {
       driveError =
-        '.env.local에 GOOGLE_DRIVE_WEBHOOK_URL(Apps Script 웹앱 주소)이 설정되지 않았습니다.';
+        "저장하려는 구글 드라이브 폴더의 공유 설정이 '링크가 있는 모든 사용자 - 편집 가능(편집자)' 권한이 아니거나 드라이브 웹앱 연동이 설정되지 않아 실패했습니다. 폴더 공유 권한을 변경해 주세요.";
     }
 
     // -------------------------------------------------------------------------

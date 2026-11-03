@@ -62,6 +62,7 @@ export default function BanPickDraftScreen({
     TURN_DURATION_SECONDS
   );
   const [savedNotice, setSavedNotice] = useState<string | null>(null);
+  const [driveErrorNotice, setDriveErrorNotice] = useState<string | null>(null);
   const [isExportingImage, setIsExportingImage] = useState<boolean>(false);
   const [customDriveFolderInput, setCustomDriveFolderInput] = useState<string>(
     match.drive_folder_id ?? ''
@@ -310,16 +311,16 @@ export default function BanPickDraftScreen({
       isManualRetry: false,
     })
       .then((res) => {
-        if (res.ok) {
-          if (res.driveUploaded) {
-            setSavedNotice(
-              `지정된 구글 드라이브 폴더에 밴픽 결과 사진(${res.fileName})이 자동 저장되었습니다!`
-            );
-          } else {
-            setSavedNotice(
-              `밴픽 결과 사진(${res.fileName})이 자동 생성되었습니다.`
-            );
-          }
+        if (res.ok && res.driveUploaded) {
+          setDriveErrorNotice(null);
+          setSavedNotice(
+            `지정된 구글 드라이브 폴더에 밴픽 결과 사진(${res.fileName})이 자동 저장되었습니다!`
+          );
+        } else {
+          setSavedNotice(null);
+          setDriveErrorNotice(
+            "구글 드라이브 전송 실패: 저장하고자 하는 폴더에 '링크가 있는 모든 사용자 - 편집 가능(편집자)' 권한이 없어 저장에 실패했습니다. 폴더 공유 설정을 변경해 주세요."
+          );
         }
       })
       .finally(() => {
@@ -330,6 +331,7 @@ export default function BanPickDraftScreen({
   const handleSaveToDrive = async () => {
     if (isExportingImage || championMap.size === 0) return;
     setIsExportingImage(true);
+    setDriveErrorNotice(null);
     try {
       const res = await saveBanPickScreenForStaff(match, championMap, {
         triggerBrowserDownload: false,
@@ -337,11 +339,13 @@ export default function BanPickDraftScreen({
         isManualRetry: true,
         customFolderId: customDriveFolderInput.trim() || undefined,
       });
-      if (res.ok) {
-        setSavedNotice(
-          res.driveUploaded
-            ? `구글 드라이브에 저장 완료: ${res.fileName}`
-            : `구글 드라이브 업로드 실패 (${res.driveError || '웹앱 URL 확인 필요'})`
+      if (res.ok && res.driveUploaded) {
+        setDriveErrorNotice(null);
+        setSavedNotice(`구글 드라이브에 저장 완료: ${res.fileName}`);
+      } else {
+        setSavedNotice(null);
+        setDriveErrorNotice(
+          "구글 드라이브 전송 실패: 저장하고자 하는 폴더에 '링크가 있는 모든 사용자 - 편집 가능(편집자)' 권한이 없어 저장에 실패했습니다. 해당 폴더의 공유 권한을 변경해 주세요."
         );
       }
     } finally {
@@ -359,6 +363,7 @@ export default function BanPickDraftScreen({
         isManualRetry: true,
       });
       if (res.ok) {
+        setDriveErrorNotice(null);
         setSavedNotice(`내 PC에 사진 다운로드 완료: ${res.fileName}`);
       }
     } finally {
@@ -1562,9 +1567,15 @@ export default function BanPickDraftScreen({
           {match.status === 'COMPLETED' && (
             <section className="bg-slate-900/90 border border-emerald-500/40 rounded-2xl p-4 flex flex-col items-center gap-3 shadow-xl">
               {savedNotice && (
-                <span className="text-xs text-amber-300 font-medium text-center">
+                <span className="text-xs text-emerald-300 font-semibold text-center">
                   ✓ {savedNotice}
                 </span>
+              )}
+
+              {driveErrorNotice && (
+                <div className="w-full rounded-xl bg-rose-950/70 border border-rose-500/60 px-3.5 py-2.5 text-xs text-rose-200 font-semibold text-center">
+                  ⚠️ {driveErrorNotice}
+                </div>
               )}
 
               <div className="flex flex-wrap items-center justify-center gap-2 w-full">

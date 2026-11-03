@@ -165,6 +165,9 @@ export async function POST(req: NextRequest) {
       } else {
         driveError = driveResult.error;
       }
+    } else {
+      driveError =
+        '.env.local에 GOOGLE_DRIVE_WEBHOOK_URL(Apps Script 웹앱 주소)이 설정되지 않았습니다.';
     }
 
     // -------------------------------------------------------------------------

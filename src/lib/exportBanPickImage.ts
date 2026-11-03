@@ -467,11 +467,13 @@ export async function saveBanPickScreenForStaff(
   championMap: Map<string, ChampionInfo>,
   options: {
     triggerBrowserDownload?: boolean;
+    uploadToDrive?: boolean;
     isManualRetry?: boolean;
     customFolderId?: string;
     customWebhookUrl?: string;
   } = {
-    triggerBrowserDownload: true,
+    triggerBrowserDownload: false,
+    uploadToDrive: true,
     isManualRetry: false,
   }
 ): Promise<{
@@ -504,7 +506,7 @@ export async function saveBanPickScreenForStaff(
   const fileName = `banpick_${match.match_id}_set${currentSet}_${blueTeam}_vs_${redTeam}_${dateStr}.png`;
   const imageDataUrl = await renderBanPickResultToDataUrl(match, championMap);
 
-  // 1) 브라우저 자동 다운로드 실행
+  // 1) 브라우저(내 PC) 다운로드 실행
   if (options.triggerBrowserDownload && typeof document !== 'undefined') {
     const link = document.createElement('a');
     link.href = imageDataUrl;
@@ -512,6 +514,15 @@ export async function saveBanPickScreenForStaff(
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  }
+
+  // 내 PC 다운로드만 요청한 경우 서버/구글 드라이브 업로드를 생략하고 즉시 반환
+  if (options.uploadToDrive === false) {
+    return {
+      ok: true,
+      fileName,
+      driveUploaded: false,
+    };
   }
 
   // 2) 서버 API를 통해 지정된(또는 기본) 구글 드라이브 폴더 업로드 및 로컬 백업 저장

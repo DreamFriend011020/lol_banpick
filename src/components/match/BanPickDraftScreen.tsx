@@ -305,7 +305,8 @@ export default function BanPickDraftScreen({
     setIsExportingImage(true);
 
     saveBanPickScreenForStaff(match, championMap, {
-      triggerBrowserDownload: viewerRole === 'OBSERVER',
+      triggerBrowserDownload: false,
+      uploadToDrive: true,
       isManualRetry: false,
     })
       .then((res) => {
@@ -326,21 +327,39 @@ export default function BanPickDraftScreen({
       });
   }, [match, isLoadingChamps, championMap, viewerRole, isAutoSaveOn]);
 
-  const handleManualExport = async () => {
+  const handleSaveToDrive = async () => {
     if (isExportingImage || championMap.size === 0) return;
     setIsExportingImage(true);
     try {
       const res = await saveBanPickScreenForStaff(match, championMap, {
-        triggerBrowserDownload: true,
+        triggerBrowserDownload: false,
+        uploadToDrive: true,
         isManualRetry: true,
         customFolderId: customDriveFolderInput.trim() || undefined,
       });
       if (res.ok) {
         setSavedNotice(
           res.driveUploaded
-            ? `지정된 구글 드라이브 및 내 PC에 저장 완료: ${res.fileName}`
-            : `내 PC에 밴픽 결과 이미지 저장 완료: ${res.fileName}`
+            ? `구글 드라이브에 저장 완료: ${res.fileName}`
+            : `구글 드라이브 업로드 실패 (${res.driveError || '웹앱 URL 확인 필요'})`
         );
+      }
+    } finally {
+      setIsExportingImage(false);
+    }
+  };
+
+  const handleDownloadToPc = async () => {
+    if (isExportingImage || championMap.size === 0) return;
+    setIsExportingImage(true);
+    try {
+      const res = await saveBanPickScreenForStaff(match, championMap, {
+        triggerBrowserDownload: true,
+        uploadToDrive: false,
+        isManualRetry: true,
+      });
+      if (res.ok) {
+        setSavedNotice(`내 PC에 사진 다운로드 완료: ${res.fileName}`);
       }
     } finally {
       setIsExportingImage(false);
@@ -1553,18 +1572,24 @@ export default function BanPickDraftScreen({
                   type="text"
                   value={customDriveFolderInput}
                   onChange={(e) => setCustomDriveFolderInput(e.target.value)}
-                  placeholder="다른 구글 드라이브 폴더 링크/ID (비우면 기본 폴더)"
+                  placeholder="구글 드라이브 폴더 링크/ID (비우면 기본 폴더)"
                   className="flex-1 min-w-[200px] rounded-lg bg-slate-950 border border-slate-700 px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
                 />
                 <button
                   type="button"
-                  onClick={handleManualExport}
+                  onClick={handleSaveToDrive}
+                  disabled={isExportingImage}
+                  className="px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 border border-emerald-500 text-xs font-bold text-white transition-colors disabled:opacity-50 whitespace-nowrap"
+                >
+                  {isExportingImage ? '처리 중...' : '구글 드라이브 저장'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDownloadToPc}
                   disabled={isExportingImage}
                   className="px-3.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 text-xs font-bold text-slate-200 transition-colors disabled:opacity-50 whitespace-nowrap"
                 >
-                  {isExportingImage
-                    ? '이미지 저장 중...'
-                    : '구글 드라이브 & 내 PC 저장'}
+                  {isExportingImage ? '처리 중...' : '내 PC에 사진 다운로드'}
                 </button>
               </div>
 

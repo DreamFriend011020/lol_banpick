@@ -139,25 +139,6 @@ export default function RofsSelectionScreen({
     return false;
   };
 
-  // 상단 역할별 안내 문구
-  const renderRoleGuideText = () => {
-    if (viewerRole === 'FIRST') {
-      if (hasFirstSubmitted) {
-        return `FIRST 팀(${match.team_first_name}) 선택 완료! SECOND 팀(${match.team_second_name})의 선택이 마무리되면 결과가 즉시 반영됩니다.`;
-      }
-      return `${match.team_first_name} (FIRST 팀장): 원하는 권한 1가지만 선택해 확정하세요.`;
-    }
-
-    if (viewerRole === 'SECOND') {
-      if (hasSecondSubmitted) {
-        return `SECOND 팀(${match.team_second_name}) 선택 완료! FIRST 팀(${match.team_first_name})의 선택이 마무리되면 결과가 즉시 반영됩니다.`;
-      }
-      return `${match.team_second_name} (SECOND 팀장): 두 가지를 모두 선택하세요. FIRST 팀이 고르지 않은 나머지 옵션에 우리 팀의 선택이 적용됩니다.`;
-    }
-
-    return '양 팀 팀장이 동시에 RoFS(진영 및 픽 순서) 선택을 진행하고 있습니다.';
-  };
-
   const isConfirmReady =
     (canFirstInteract && firstPending !== null) ||
     (canSecondInteract &&
@@ -208,7 +189,7 @@ export default function RofsSelectionScreen({
             </h2>
             <p className="text-xs text-slate-400 mt-1">
               {hasFirstSubmitted
-                ? '선택 확정됨 (상대 팀 완료 시 공개)'
+                ? '선택 확정됨'
                 : '선택 중...'}
             </p>
           </div>
@@ -218,11 +199,8 @@ export default function RofsSelectionScreen({
             <span className="text-xs font-semibold tracking-widest text-amber-400 uppercase">
               Rule of First Selection
             </span>
-            <span className="text-3xl font-black text-slate-600">VS</span>
-            <span className="text-xs text-slate-400">
-              양 팀 동시 선택 진행 중
-            </span>
-            <span className="text-[11px] text-slate-500">
+            <span className="text-3xl font-black text-white-600">VS</span>
+            <span className="text-[11px] text-slate-550">
               (FIRST 선택 우선 적용 → 나머지 옵션 SECOND 선택 적용)
             </span>
           </div>
@@ -251,41 +229,37 @@ export default function RofsSelectionScreen({
             </h2>
             <p className="text-xs text-slate-400 mt-1">
               {hasSecondSubmitted
-                ? '2가지 옵션 모두 확정됨 (상대 팀 완료 시 공개)'
+                ? '선택 확정됨'
                 : '선택 중...'}
             </p>
           </div>
         </div>
 
-        {/* 현재 역할 안내 배너 및 상대 팀 대기 스피너 */}
-        <div className="rounded-xl bg-slate-900 border border-slate-800 p-4 text-center space-y-2">
-          <p className="text-base md:text-lg font-bold text-slate-100">
-            {renderRoleGuideText()}
-          </p>
-
-          <div className="flex flex-wrap items-center justify-center gap-6 pt-1 text-xs">
-            <div className="flex items-center gap-2">
+        {/* 양 팀 실시간 진행 상태 및 스피너 */}
+        <div className="rounded-2xl bg-slate-900/90 border border-slate-800 p-5 md:p-6 text-center shadow-lg">
+          <div className="flex flex-wrap items-center justify-center gap-8 md:gap-12 text-sm md:text-base">
+            <div className="flex items-center gap-2.5">
               {hasFirstSubmitted ? (
-                <span className="text-emerald-400 font-bold">
-                  ✓ FIRST 팀({match.team_first_name}) 선택 완료
+                <span className="text-emerald-400 font-extrabold text-base md:text-lg flex items-center gap-1.5">
+                  ✓ FIRST {match.team_first_name}팀 선택 완료
                 </span>
               ) : (
-                <span className="flex items-center gap-1.5 text-amber-400 font-medium">
-                  <span className="inline-block w-3.5 h-3.5 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
-                  FIRST 팀({match.team_first_name}) 선택 중...
+                <span className="flex items-center gap-2 text-amber-400 font-bold text-base md:text-lg">
+                  <span className="inline-block w-4 h-4 md:w-5 md:h-5 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+                  FIRST {match.team_first_name}팀 선택 중...
                 </span>
               )}
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2.5">
               {hasSecondSubmitted ? (
-                <span className="text-emerald-400 font-bold">
-                  ✓ SECOND 팀({match.team_second_name}) 선택 완료
+                <span className="text-emerald-400 font-extrabold text-base md:text-lg flex items-center gap-1.5">
+                  ✓ SECOND {match.team_second_name}팀 선택 완료
                 </span>
               ) : (
-                <span className="flex items-center gap-1.5 text-cyan-400 font-medium">
-                  <span className="inline-block w-3.5 h-3.5 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
-                  SECOND 팀({match.team_second_name}) 2개 옵션 선택 중...
+                <span className="flex items-center gap-2 text-cyan-400 font-bold text-base md:text-lg">
+                  <span className="inline-block w-4 h-4 md:w-5 md:h-5 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+                  SECOND {match.team_second_name}팀 선택 중...
                 </span>
               )}
             </div>
@@ -308,14 +282,14 @@ export default function RofsSelectionScreen({
         >
           <div>
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded bg-slate-800 text-slate-300">
-                진영(Side)
+              <span className="text-xl font-bold uppercase tracking-wider text-white">
+                진영
               </span>
               {viewerRole === 'FIRST' && (
                 <span className="text-xs font-semibold text-amber-300">
                   {firstPending?.category === 'SIDE' ||
                     firstSubmittedChoice?.category === 'SIDE'
-                    ? '✓ FIRST 우선권으로 선택됨'
+                    ? '✓ 진영 선택됨'
                     : '진영 또는 픽 순서 중 택 1'}
                 </span>
               )}
@@ -327,15 +301,6 @@ export default function RofsSelectionScreen({
                 </span>
               )}
             </div>
-
-            <h3 className="text-xl font-bold text-white mt-2">
-              진영(Side) 결정
-            </h3>
-            {/* <p className="text-sm text-slate-400 mt-1">
-              {viewerRole === 'SECOND'
-                ? 'FIRST 팀이 [픽 순서]를 가져갈 경우, 여기서 선택한 진영이 우리 팀(SECOND)에 그대로 배정됩니다.'
-                : '블루 진영 또는 레드 진영 중 우리 팀이 플레이할 진영을 선택합니다.'}
-            </p> */}
           </div>
 
           {/* 진영 선택 버튼 (블루 / 레드) */}
@@ -400,14 +365,14 @@ export default function RofsSelectionScreen({
         >
           <div>
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded bg-slate-800 text-slate-300">
-                픽 순서(Pick Order)
+              <span className="text-xl font-bold uppercase tracking-wider text-white">
+                픽 순서
               </span>
               {viewerRole === 'FIRST' && (
                 <span className="text-xs font-semibold text-amber-300">
                   {firstPending?.category === 'PICK_ORDER' ||
                     firstSubmittedChoice?.category === 'PICK_ORDER'
-                    ? '✓ FIRST 우선권으로 선택됨'
+                    ? '✓ 픽 순서 선택됨'
                     : '진영 또는 픽 순서 중 택 1'}
                 </span>
               )}
@@ -420,15 +385,6 @@ export default function RofsSelectionScreen({
                 </span>
               )}
             </div>
-
-            <h3 className="text-xl font-bold text-white mt-2">
-              픽 순서(Pick Order) 결정
-            </h3>
-            {/* <p className="text-sm text-slate-400 mt-1">
-              {viewerRole === 'SECOND'
-                ? 'FIRST 팀이 [진영]을 가져갈 경우, 여기서 선택한 픽 순서가 우리 팀(SECOND)에 그대로 배정됩니다.'
-                : '밴픽에서 선픽(First Pick) 또는 후픽(Last Pick) 중 어떤 순서를 가져갈지 선택합니다.'}
-            </p> */}
           </div>
 
           {/* 픽 순서 선택 버튼 (선픽 / 후픽) */}
@@ -502,25 +458,25 @@ export default function RofsSelectionScreen({
                   <strong className="text-white">
                     {firstSubmittedChoice.category === 'SIDE'
                       ? firstSubmittedChoice.choice === 'BLUE'
-                        ? '진영 - 블루(BLUE)'
-                        : '진영 - 레드(RED)'
+                        ? '진영 - 블루'
+                        : '진영 - 레드'
                       : firstSubmittedChoice.choice === 'FIRST_PICK'
-                        ? '픽 순서 - 선픽(FIRST PICK)'
-                        : '픽 순서 - 후픽(LAST PICK)'}
+                        ? '픽 순서 - 선픽'
+                        : '픽 순서 - 후픽'}
                   </strong>{' '}
                   (SECOND 팀의 선택을 기다리는 중...)
                 </span>
               ) : firstPending ? (
                 <span>
-                  선택한 우선 옵션 (1개):{' '}
+                  선택 현황:{' '}
                   <strong className="text-amber-300">
                     {firstPending.category === 'SIDE'
                       ? firstPending.choice === 'BLUE'
-                        ? '진영 - 블루(BLUE)'
-                        : '진영 - 레드(RED)'
+                        ? '진영 - 블루'
+                        : '진영 - 레드'
                       : firstPending.choice === 'FIRST_PICK'
-                        ? '픽 순서 - 선픽(FIRST PICK)'
-                        : '픽 순서 - 후픽(LAST PICK)'}
+                        ? '픽 순서 - 선픽'
+                        : '픽 순서 - 후픽'}
                   </strong>
                 </span>
               ) : (

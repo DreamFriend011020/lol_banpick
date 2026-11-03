@@ -16,6 +16,8 @@ import {
   isInSwapPhase,
   isMatchAutoSaveEnabled,
   isScrimMatchRoom,
+  resolveFirstTeamSide,
+  resolvePickOrderSides,
   resolveViewerSide,
   SWAP_DURATION_SECONDS,
   TOURNAMENT_DRAFT_SEQUENCE,
@@ -56,6 +58,7 @@ export default function BanPickDraftScreen({
   const [champions, setChampions] = useState<ChampionInfo[]>([]);
   const [ddragonVersion, setDdragonVersion] = useState<string>('');
   const [isLoadingChamps, setIsLoadingChamps] = useState<boolean>(true);
+  const [searchInput, setSearchInput] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedTag, setSelectedTag] = useState<string>('ALL');
   const [remainingSeconds, setRemainingSeconds] = useState<number>(
@@ -210,25 +213,35 @@ export default function BanPickDraftScreen({
     [bp, match]
   );
 
-  // 다음 세트 진행 시 누가 FIRST 팀을 맡을지 선택하는 상태
-  const scheduledNextFirst =
-    seriesState.game_first_teams[seriesState.current_game] ??
-    (match.team_first_name === seriesState.team_a_name
-      ? seriesState.team_b_name
-      : seriesState.team_a_name);
+  // 현재 세트에서 누가 FIRST 역할을 맡았는지와 팀별 진영 계산
+  const currentFirstRole: 'TEAM_A' | 'TEAM_B' =
+    seriesState.game_first_roles?.[seriesState.current_game - 1] ?? 'TEAM_A';
+  const firstSide = resolveFirstTeamSide(match);
+  const teamASide =
+    currentFirstRole === 'TEAM_A'
+      ? firstSide
+      : firstSide === 'BLUE'
+        ? 'RED'
+        : 'BLUE';
+  const teamBSide = teamASide === 'BLUE' ? 'RED' : 'BLUE';
 
-  const [nextGameFirstTeam, setNextGameFirstTeam] =
-    useState<string>(scheduledNextFirst);
+  // 다음 세트 FIRST 역할을 맡을 팀 기본값 (기본적으로 이전 세트 FIRST의 반대 역할)
+  const defaultNextFirstRole: 'TEAM_A' | 'TEAM_B' =
+    seriesState.game_first_roles?.[seriesState.current_game] ??
+    (currentFirstRole === 'TEAM_A' ? 'TEAM_B' : 'TEAM_A');
+
+  const [nextFirstRole, setNextFirstRole] =
+    useState<'TEAM_A' | 'TEAM_B'>(defaultNextFirstRole);
   const [nextGameFearless, setNextGameFearless] = useState<boolean>(
     seriesState.fearless_enabled
   );
 
   useEffect(() => {
-    setNextGameFirstTeam(scheduledNextFirst);
+    setNextFirstRole(defaultNextFirstRole);
     setNextGameFearless(seriesState.fearless_enabled);
     autoSavedRef.current = false;
     swapTimeoutTriggeredRef.current = false;
-  }, [seriesState.current_game, scheduledNextFirst, seriesState.fearless_enabled]);
+  }, [seriesState.current_game, defaultNextFirstRole, seriesState.fearless_enabled]);
 
   // 현재 접속자의 진영('BLUE' | 'RED' | null) 판별
   const viewerSide: SideChoice | null = useMemo(
@@ -593,8 +606,9 @@ export default function BanPickDraftScreen({
   const blueTeamName = match.selected_side?.blue ?? match.team_first_name;
   const redTeamName = match.selected_side?.red ?? match.team_second_name;
 
-  const isBlueFirstPick = match.pick_turn?.first_pick === blueTeamName;
-  const isRedFirstPick = match.pick_turn?.first_pick === redTeamName;
+  const { firstPickSide } = resolvePickOrderSides(match);
+  const isBlueFirstPick = firstPickSide === 'BLUE';
+  const isRedFirstPick = firstPickSide === 'RED';
 
   // 페이즈 한글 제목
   const renderPhaseTitle = () => {
@@ -613,13 +627,13 @@ export default function BanPickDraftScreen({
     const firstPickSideLabel = isRedFirstPick ? '레드 선픽' : '블루 선픽';
     switch (currentStep.phase) {
       case 'PHASE1_BAN':
-        return `1차 밴 페이즈 (${firstPickSideLabel} 진영부터 교차 3밴)`;
+        return `1차 밴 페이즈`;
       case 'PHASE1_PICK':
-        return `1차 픽 페이즈 (${firstPickSideLabel} · 1 - 2 - 2 - 1)`;
+        return `1차 픽 페이즈`;
       case 'PHASE2_BAN':
-        return '2차 밴 페이즈 (후픽 진영부터 교차 2밴)';
+        return '2차 밴 페이즈';
       case 'PHASE2_PICK':
-        return '2차 픽 페이즈 (1 - 2 - 1 · 후픽 진영 막픽)';
+        return '2차 픽 페이즈';
       default:
         return '밴픽 진행 중';
     }
@@ -830,6 +844,14 @@ export default function BanPickDraftScreen({
 
     const isBlue = side === 'BLUE';
     const teamName = isBlue ? blueTeamName : redTeamName;
+    const isSameTeamName = seriesState.team_a_name === seriesState.team_b_name;
+    const teamLabel = isSameTeamName
+      ? isBlue
+        ? `${blueTeamName} (블루 진영)`
+        : `${redTeamName} (레드 진영)`
+      : isBlue
+        ? blueTeamName
+        : redTeamName;
     const teamFearlessIds = isBlue ? blueFearlessPicks : redFearlessPicks;
 
     // 5개 단위(세트별)로 행 분리
@@ -848,7 +870,7 @@ export default function BanPickDraftScreen({
             }`}
         >
           <span className="text-[11px] font-extrabold text-amber-300 flex items-center gap-1">
-            🔥 {teamName} 피어리스 금지 (전 세트 픽)
+            🔥 {teamLabel} 피어리스 금지 (전 세트 픽)
           </span>
           <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-950 border border-slate-800 text-slate-400">
             {teamFearlessIds.length}명
@@ -934,20 +956,20 @@ export default function BanPickDraftScreen({
             <div className="rounded-xl bg-slate-900/80 border border-slate-800 px-4 py-2 text-xs text-slate-300 flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
               <span className="font-bold text-amber-400">RoFS 확정 결과</span>
               <span>
-                FIRST 팀({match.team_first_name}) 우선 선택:{' '}
+                FIRST 팀 {match.team_first_name} 우선 선택:{' '}
                 <strong className="text-white">
                   {match.rofs_submissions.first_choice.category === 'SIDE'
-                    ? `진영 (${match.rofs_submissions.first_choice.choice === 'BLUE' ? '블루' : '레드'})`
-                    : `픽 순서 (${match.rofs_submissions.first_choice.choice === 'FIRST_PICK' ? '선픽' : '후픽'})`}
+                    ? `${match.rofs_submissions.first_choice.choice === 'BLUE' ? '블루' : '레드'} 진영`
+                    : `${match.rofs_submissions.first_choice.choice === 'FIRST_PICK' ? '선픽' : '후픽'}`}
                 </strong>
               </span>
               <span className="text-slate-600">→</span>
               <span>
-                나머지 옵션 SECOND 팀({match.team_second_name}) 선택 적용:{' '}
+                나머지 옵션 SECOND 팀 {match.team_second_name} 선택 적용:{' '}
                 <strong className="text-cyan-300">
                   {match.rofs_submissions.first_choice.category === 'SIDE'
-                    ? `픽 순서 (${match.rofs_submissions.second_choice.pickOrderChoice === 'FIRST_PICK' ? '선픽' : '후픽'})`
-                    : `진영 (${match.rofs_submissions.second_choice.sideChoice === 'BLUE' ? '블루' : '레드'})`}
+                    ? `${match.rofs_submissions.second_choice.pickOrderChoice === 'FIRST_PICK' ? '선픽' : '후픽'}`
+                    : `${match.rofs_submissions.second_choice.sideChoice === 'BLUE' ? '블루' : '레드'} 진영`}
                 </strong>
               </span>
             </div>
@@ -965,11 +987,11 @@ export default function BanPickDraftScreen({
               </h2>
               {isBlueFirstPick ? (
                 <span className="text-xs font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">
-                  선픽 (First Pick)
+                  선픽
                 </span>
               ) : (
                 <span className="text-xs font-bold px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
-                  후픽 (Last Pick)
+                  후픽
                 </span>
               )}
               {viewerSide === 'BLUE' && (
@@ -1142,11 +1164,11 @@ export default function BanPickDraftScreen({
               )}
               {isRedFirstPick ? (
                 <span className="text-xs font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">
-                  선픽 (First Pick)
+                  선픽
                 </span>
               ) : (
                 <span className="text-xs font-bold px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
-                  후픽 (Last Pick)
+                  후픽
                 </span>
               )}
               <h2 className="text-2xl font-black text-white tracking-tight">
@@ -1191,377 +1213,412 @@ export default function BanPickDraftScreen({
         {/* 중앙 영역: 챔피언 선택칸 및 60초 라인 스왑 보드 + 하단 밴픽 완료 컨트롤 */}
         <div className="lg:col-span-6 flex flex-col gap-2.5">
           <section className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 flex flex-col justify-between h-[580px] md:h-[640px]">
-          {inSwapPhase ? (
-            /* ===============================================================
-               [60초 라인 스왑 페이즈 전용 중앙 패널]
-            =============================================================== */
-            <div className="flex flex-col justify-between h-full">
-              <div className="space-y-2 border-b border-slate-800 pb-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">
-                    60초 라인 스왑 (Champion Lane Swap)
-                  </span>
-                </div>
-                <h3 className="text-lg font-extrabold text-white">
-                  픽된 챔피언의 라인(TOP / JGL / MID / BOT / SUP)을 최종 배치하세요
-                </h3>
-                <p className="text-xs text-slate-400">
-                  좌/우 픽 슬롯 카드를 직접 두 번 클릭하여 서로 바꾸거나, 아래 라인 배치표에서 [스왑 선택] / [▲ / ▼] 버튼으로 즉시 위치를 변경할 수 있습니다.
-                </p>
-              </div>
-
-              {/* 내 팀 라인 배치 및 스왑 리스트 (옵저버는 양 팀 현황 안내) */}
-              <div className="flex-1 overflow-y-auto my-3 space-y-2 pr-1">
-                {viewerSide ? (
-                  (viewerSide === 'BLUE'
-                    ? bp?.blue_picks ?? []
-                    : bp?.red_picks ?? []
-                  ).map((champId, idx) => {
-                    const champ = champId ? championMap.get(champId) : null;
-                    const isSelected = selectedSwapSlot === idx;
-
-                    return (
-                      <div
-                        key={`swap-row-${idx}`}
-                        className={`flex items-center justify-between p-2.5 rounded-xl border transition-all ${isSelected
-                          ? 'border-amber-400 bg-amber-500/15'
-                          : 'border-slate-800 bg-slate-950/70'
-                          }`}
-                      >
-                        <div className="flex items-center gap-3">
-                          <span className="w-24 text-xs font-black px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-amber-300 text-center">
-                            {POSITION_KOR_NAMES[idx]}
-                          </span>
-                          {champ && (
-                            <img
-                              src={champ.imageUrl}
-                              alt={champ.name}
-                              className="w-11 h-11 rounded-lg object-cover border border-slate-700"
-                            />
-                          )}
-                          <div>
-                            <div className="text-sm font-extrabold text-white">
-                              {champ ? champ.name : '미선택'}
-                            </div>
-                            <div className="text-[11px] text-slate-400">
-                              {champ?.title}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* 스왑 조작 버튼 */}
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            disabled={
-                              isMySwapReady || isSubmitting || idx === 0
-                            }
-                            onClick={() =>
-                              handleQuickAdjacentSwap(idx, idx - 1)
-                            }
-                            className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-200 disabled:opacity-30 disabled:cursor-not-allowed"
-                            title="윗 라인과 교체"
-                          >
-                            ▲
-                          </button>
-                          <button
-                            type="button"
-                            disabled={
-                              isMySwapReady || isSubmitting || idx === 4
-                            }
-                            onClick={() =>
-                              handleQuickAdjacentSwap(idx, idx + 1)
-                            }
-                            className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-200 disabled:opacity-30 disabled:cursor-not-allowed"
-                            title="아랫 라인과 교체"
-                          >
-                            ▼
-                          </button>
-                          <button
-                            type="button"
-                            disabled={isMySwapReady || isSubmitting}
-                            onClick={() =>
-                              handlePickSlotSwapClick(viewerSide, idx)
-                            }
-                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${isSelected
-                              ? 'bg-amber-400 text-slate-950'
-                              : selectedSwapSlot !== null
-                                ? 'bg-cyan-500 hover:bg-cyan-400 text-slate-950'
-                                : 'bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700'
-                              } disabled:opacity-30 disabled:cursor-not-allowed`}
-                          >
-                            {isSelected
-                              ? '선택 취소'
-                              : selectedSwapSlot !== null
-                                ? `${POSITION_LABELS[selectedSwapSlot]}와 교체`
-                                : '스왑 선택'}
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })
-                ) : (
-                  <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-3 text-slate-300">
-                    <span className="w-7 h-7 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
-                    <p className="text-base font-bold text-white">
-                      양 팀이 60초 동안 챔피언의 라인(TOP/JGL/MID/BOT/SUP)을 배치하고 있습니다.
-                    </p>
-                    <p className="text-xs text-slate-400">
-                      60초 타이머가 종료되거나 양 팀이 모두 [라인 스왑 완료]를 누르면 최종 결과가 확정되고 운영진 화면에 자동 저장됩니다.
-                    </p>
+            {inSwapPhase ? (
+              /* ===============================================================
+                 [60초 라인 스왑 페이즈 전용 중앙 패널]
+              =============================================================== */
+              <div className="flex flex-col justify-between h-full">
+                <div className="space-y-2 border-b border-slate-800 pb-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                      60초 라인 스왑 (Champion Lane Swap)
+                    </span>
                   </div>
-                )}
-              </div>
+                  <h3 className="text-lg font-extrabold text-white">
+                    픽된 챔피언의 라인(TOP / JGL / MID / BOT / SUP)을 최종 배치하세요
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    좌/우 픽 슬롯 카드를 직접 두 번 클릭하여 서로 바꾸거나, 아래 라인 배치표에서 [스왑 선택] / [▲ / ▼] 버튼으로 즉시 위치를 변경할 수 있습니다.
+                  </p>
+                </div>
 
-              {/* 라인 스왑 하단 완료 버튼 */}
-              <div className="pt-3 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3">
-                <div className="text-xs text-slate-300">
+                {/* 내 팀 라인 배치 및 스왑 리스트 (옵저버는 양 팀 현황 안내) */}
+                <div className="flex-1 overflow-y-auto my-3 space-y-2 pr-1">
                   {viewerSide ? (
-                    isMySwapReady ? (
-                      <span className="text-emerald-400 font-bold">
-                        ✓ 우리 팀({viewerSide}) 라인 스왑 완료! 상대 팀 완료 또는 타이머 종료 시 최종 확정됩니다.
-                      </span>
-                    ) : (
-                      <span>
-                        라인 배치를 마쳤다면 우측{' '}
-                        <strong className="text-amber-300">
-                          [라인 스왑 완료 (확정)]
-                        </strong>{' '}
-                        버튼을 눌러주세요.
-                      </span>
-                    )
-                  ) : (
-                    <span className="text-slate-400">
-                      관전 모드 — 양 팀의 실시간 라인 스왑이 좌/우 슬롯에 즉시 표시됩니다.
-                    </span>
-                  )}
-                </div>
-
-                {viewerSide && (
-                  <button
-                    type="button"
-                    disabled={isMySwapReady || isSubmitting}
-                    onClick={handleReadySwapPhase}
-                    className="w-full sm:w-auto px-7 py-2.5 rounded-xl font-extrabold text-sm bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-lg shadow-emerald-500/20 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    {isMySwapReady
-                      ? '라인 스왑 확정됨'
-                      : '라인 스왑 완료 (확정)'}
-                  </button>
-                )}
-              </div>
-            </div>
-          ) : (
-            /* ===============================================================
-               [일반 20턴 밴/픽 페이즈 중앙 챔피언 그리드 패널]
-            =============================================================== */
-            <>
-              {/* 검색창 및 역할군 필터 */}
-              <div className="space-y-3 pb-3 border-b border-slate-800">
-                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
-                  <div className="relative flex-1">
-                    <input
-                      type="text"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder="챔피언 검색 (예: 리신, 미포, 트페, ㄹㅅ, Ahri)..."
-                      className="w-full rounded-xl bg-slate-950 border border-slate-700 px-3.5 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
-                    />
-                    {searchQuery && (
-                      <button
-                        type="button"
-                        onClick={() => setSearchQuery('')}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-white"
-                      >
-                        초기화
-                      </button>
-                    )}
-                  </div>
-
-                  {ddragonVersion && (
-                    <span className="text-[11px] text-slate-400 px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-800 self-end sm:self-auto">
-                      Data Dragon v{ddragonVersion} ({champions.length}명)
-                    </span>
-                  )}
-                </div>
-
-                {/* 역할군 필터 탭 (이미 선택된 카테고리를 다시 클릭하면 'ALL'로 복귀) */}
-                <div className="flex flex-wrap gap-1.5">
-                  {ROLE_FILTERS.map((role) => (
-                    <button
-                      key={role.tag}
-                      type="button"
-                      onClick={() =>
-                        setSelectedTag((prev) =>
-                          prev === role.tag && role.tag !== 'ALL'
-                            ? 'ALL'
-                            : role.tag
-                        )
-                      }
-                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors ${selectedTag === role.tag
-                        ? 'bg-amber-500 text-slate-950'
-                        : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                        }`}
-                    >
-                      {role.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* 챔피언 초상화 그리드 */}
-              <div className="flex-1 overflow-y-auto my-3 pr-1">
-                {isLoadingChamps ? (
-                  <div className="h-full flex flex-col items-center justify-center text-slate-400 space-y-2">
-                    <span className="w-6 h-6 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
-                    <span className="text-sm">
-                      Data Dragon API에서 최신 챔피언 목록을 불러오는 중입니다...
-                    </span>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-7 gap-2.5">
-                    {currentStep?.actionType === 'BAN' && (
-                      <button
-                        type="button"
-                        disabled={!isMyTurn || isSubmitting}
-                        onClick={() => handleSelectChampion('NO_BAN')}
-                        className={`group flex flex-col items-center p-1.5 rounded-xl border transition-all ${bp?.hovered_champion_id === 'NO_BAN'
-                          ? 'border-amber-400 bg-amber-500/20 ring-2 ring-amber-400/50'
-                          : 'border-slate-800 bg-slate-950/70 hover:border-slate-600'
-                          } disabled:opacity-40 disabled:cursor-not-allowed`}
-                      >
-                        <div className="w-14 h-14 rounded-lg bg-slate-900 border border-slate-700 flex items-center justify-center text-xs font-bold text-slate-400">
-                          기권
-                        </div>
-                        <span className="text-[11px] font-medium text-slate-300 mt-1 truncate w-full text-center">
-                          노밴 (Skip)
-                        </span>
-                      </button>
-                    )}
-
-                    {filteredChampions.map((champ) => {
-                      const isUnavailable = unavailableIds.has(champ.id);
-                      const isFearlessBanned = fearlessIds.has(champ.id);
-                      const isHovered = bp?.hovered_champion_id === champ.id;
+                    (viewerSide === 'BLUE'
+                      ? bp?.blue_picks ?? []
+                      : bp?.red_picks ?? []
+                    ).map((champId, idx) => {
+                      const champ = champId ? championMap.get(champId) : null;
+                      const isSelected = selectedSwapSlot === idx;
 
                       return (
-                        <button
-                          key={champ.id}
-                          type="button"
-                          disabled={!isMyTurn || isUnavailable || isSubmitting}
-                          onClick={() => handleSelectChampion(champ.id)}
-                          className={`group relative flex flex-col items-center p-1.5 rounded-xl border transition-all ${isHovered
-                            ? 'border-amber-400 bg-amber-500/20 ring-2 ring-amber-400/60 scale-[1.02]'
-                            : isUnavailable
-                              ? 'border-slate-900 bg-slate-950/30 opacity-35 cursor-not-allowed'
-                              : 'border-slate-800/80 bg-slate-950/60 hover:border-slate-600'
-                            } disabled:cursor-not-allowed`}
+                        <div
+                          key={`swap-row-${idx}`}
+                          className={`flex items-center justify-between p-2.5 rounded-xl border transition-all ${isSelected
+                            ? 'border-amber-400 bg-amber-500/15'
+                            : 'border-slate-800 bg-slate-950/70'
+                            }`}
                         >
-                          <div className="relative w-14 h-14 rounded-lg overflow-hidden bg-slate-900">
-                            <img
-                              src={champ.imageUrl}
-                              alt={champ.name}
-                              loading="lazy"
-                              className={`w-full h-full object-cover ${isUnavailable ? 'grayscale' : ''
-                                }`}
-                            />
-                            {isUnavailable && (
-                              <div className="absolute inset-0 bg-slate-950/75 flex items-center justify-center">
-                                <span
-                                  className={`text-[10px] font-black uppercase ${isFearlessBanned
-                                    ? 'text-amber-400'
-                                    : 'text-rose-400'
-                                    }`}
-                                >
-                                  {isFearlessBanned ? '피어리스' : '불가'}
-                                </span>
-                              </div>
+                          <div className="flex items-center gap-3">
+                            <span className="w-24 text-xs font-black px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-amber-300 text-center">
+                              {POSITION_KOR_NAMES[idx]}
+                            </span>
+                            {champ && (
+                              <img
+                                src={champ.imageUrl}
+                                alt={champ.name}
+                                className="w-11 h-11 rounded-lg object-cover border border-slate-700"
+                              />
                             )}
+                            <div>
+                              <div className="text-sm font-extrabold text-white">
+                                {champ ? champ.name : '미선택'}
+                              </div>
+                              <div className="text-[11px] text-slate-400">
+                                {champ?.title}
+                              </div>
+                            </div>
                           </div>
-                          <span className="text-[11px] font-medium text-slate-200 mt-1 truncate w-full text-center">
-                            {champ.name}
-                          </span>
-                        </button>
+
+                          {/* 스왑 조작 버튼 */}
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              disabled={
+                                isMySwapReady || isSubmitting || idx === 0
+                              }
+                              onClick={() =>
+                                handleQuickAdjacentSwap(idx, idx - 1)
+                              }
+                              className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-200 disabled:opacity-30 disabled:cursor-not-allowed"
+                              title="윗 라인과 교체"
+                            >
+                              ▲
+                            </button>
+                            <button
+                              type="button"
+                              disabled={
+                                isMySwapReady || isSubmitting || idx === 4
+                              }
+                              onClick={() =>
+                                handleQuickAdjacentSwap(idx, idx + 1)
+                              }
+                              className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-200 disabled:opacity-30 disabled:cursor-not-allowed"
+                              title="아랫 라인과 교체"
+                            >
+                              ▼
+                            </button>
+                            <button
+                              type="button"
+                              disabled={isMySwapReady || isSubmitting}
+                              onClick={() =>
+                                handlePickSlotSwapClick(viewerSide, idx)
+                              }
+                              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${isSelected
+                                ? 'bg-amber-400 text-slate-950'
+                                : selectedSwapSlot !== null
+                                  ? 'bg-cyan-500 hover:bg-cyan-400 text-slate-950'
+                                  : 'bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700'
+                                } disabled:opacity-30 disabled:cursor-not-allowed`}
+                            >
+                              {isSelected
+                                ? '선택 취소'
+                                : selectedSwapSlot !== null
+                                  ? `${POSITION_LABELS[selectedSwapSlot]}와 교체`
+                                  : '스왑 선택'}
+                            </button>
+                          </div>
+                        </div>
                       );
-                    })}
-                  </div>
-                )}
-              </div>
+                    })
+                  ) : (
+                    <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-3 text-slate-300">
+                      <span className="w-7 h-7 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+                      <p className="text-base font-bold text-white">
+                        양 팀이 60초 동안 챔피언의 라인(TOP/JGL/MID/BOT/SUP)을 배치하고 있습니다.
+                      </p>
+                      <p className="text-xs text-slate-400">
+                        60초 타이머가 종료되거나 양 팀이 모두 [라인 스왑 완료]를 누르면 최종 결과가 확정되고 운영진 화면에 자동 저장됩니다.
+                      </p>
+                    </div>
+                  )}
+                </div>
 
-              {/* 하단: 에러 알림 및 '선택 완료(Lock-in)' 버튼 */}
-              <div className="pt-3 border-t border-slate-800 space-y-2">
-                {errorMessage && (
-                  <div className="rounded-lg bg-rose-950/70 border border-rose-500/50 px-3 py-1.5 text-xs text-rose-200 text-center">
-                    {errorMessage}
-                  </div>
-                )}
-
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+                {/* 라인 스왑 하단 완료 버튼 */}
+                <div className="pt-3 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3">
                   <div className="text-xs text-slate-300">
-                    {match.status === 'BANPICK_IN_PROGRESS' && currentStep ? (
-                      isMyTurn ? (
-                        bp?.hovered_champion_id ? (
-                          <span>
-                            선택 대기 중:{' '}
-                            <strong className="text-amber-400 text-sm">
-                              {bp.hovered_champion_id === 'NO_BAN'
-                                ? '노밴 (기권)'
-                                : championMap.get(bp.hovered_champion_id)
-                                  ?.name ?? bp.hovered_champion_id}
-                            </strong>{' '}
-                            — 우측 버튼을 눌러 확정하세요.
-                          </span>
-                        ) : (
-                          <span className="text-amber-300 font-semibold">
-                            우리 팀({viewerSide})의{' '}
-                            {currentStep.actionType === 'BAN'
-                              ? '밴(BAN) 차례입니다! 챔피언을 선택해주세요.'
-                              : '픽(PICK) 차례입니다! 아무것도 선택하지 않으면 랜덤 픽으로 결정됩니다.'}
-                          </span>
-                        )
+                    {viewerSide ? (
+                      isMySwapReady ? (
+                        <span className="text-emerald-400 font-bold">
+                          ✓ 우리 팀({viewerSide}) 라인 스왑 완료! 상대 팀 완료 또는 타이머 종료 시 최종 확정됩니다.
+                        </span>
                       ) : (
-                        <span className="text-slate-400">
-                          현재{' '}
-                          <strong className="text-white">
-                            {currentStep.side === 'BLUE'
-                              ? `${blueTeamName} (BLUE)`
-                              : `${redTeamName} (RED)`}
+                        <span>
+                          라인 배치를 마쳤다면 우측{' '}
+                          <strong className="text-amber-300">
+                            [라인 스왑 완료 (확정)]
                           </strong>{' '}
-                          팀이 {currentStep.label}을 진행하고 있습니다...
+                          버튼을 눌러주세요.
                         </span>
                       )
-                    ) : match.status === 'COMPLETED' ? (
-                      <span className="text-emerald-400 font-bold">
-                        20턴 토너먼트 드래프트 및 라인 스왑이 모두 완료되었습니다.
-                      </span>
                     ) : (
                       <span className="text-slate-400">
-                        상단 [토너먼트 드래프트 밴픽 시작하기] 버튼을 누르면 1차 밴부터 시작됩니다.
+                        관전 모드 — 양 팀의 실시간 라인 스왑이 좌/우 슬롯에 즉시 표시됩니다.
                       </span>
                     )}
                   </div>
 
-                  <button
-                    type="button"
-                    disabled={
-                      !isMyTurn || !bp?.hovered_champion_id || isSubmitting
-                    }
-                    onClick={handleLockIn}
-                    className={`w-full sm:w-auto px-7 py-2.5 rounded-xl font-extrabold text-sm transition-all ${currentStep?.actionType === 'BAN'
-                      ? 'bg-rose-600 hover:bg-rose-500 text-white shadow-lg shadow-rose-600/20'
-                      : 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-lg shadow-amber-500/20'
-                      } disabled:opacity-35 disabled:cursor-not-allowed`}
-                  >
-                    {isSubmitting
-                      ? '동기화 중...'
-                      : currentStep?.actionType === 'BAN'
-                        ? '챔피언 밴 완료 (Lock-in)'
-                        : '선택 완료 (Lock-in)'}
-                  </button>
+                  {viewerSide && (
+                    <button
+                      type="button"
+                      disabled={isMySwapReady || isSubmitting}
+                      onClick={handleReadySwapPhase}
+                      className="w-full sm:w-auto px-7 py-2.5 rounded-xl font-extrabold text-sm bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-lg shadow-emerald-500/20 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      {isMySwapReady
+                        ? '라인 스왑 확정됨'
+                        : '라인 스왑 완료 (확정)'}
+                    </button>
+                  )}
                 </div>
               </div>
-            </>
-          )}
+            ) : (
+              /* ===============================================================
+                 [일반 20턴 밴/픽 페이즈 중앙 챔피언 그리드 패널]
+              =============================================================== */
+              <>
+                {/* 검색창 및 역할군 필터 */}
+                <div className="space-y-3 pb-3 border-b border-slate-800">
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+                    <div className="relative flex-1 flex items-center">
+                      <input
+                        type="text"
+                        value={searchInput}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setSearchInput(val);
+                          if (!val.trim()) {
+                            setSearchQuery('');
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            setSearchQuery(searchInput.trim());
+                          }
+                        }}
+                        placeholder="챔피언 검색"
+                        className="w-full rounded-xl bg-slate-950 border border-slate-700 pl-3.5 pr-20 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
+                      />
+                      <div className="absolute right-1.5 flex items-center gap-1">
+                        {searchInput && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSearchInput('');
+                              setSearchQuery('');
+                            }}
+                            className="px-2 py-1 text-xs text-slate-400 hover:text-white transition-colors"
+                            title="초기화"
+                          >
+                            초기화
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setSearchQuery(searchInput.trim())}
+                          className="p-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 hover:text-amber-300 border border-amber-500/30 transition-colors flex items-center justify-center cursor-pointer"
+                          title="검색"
+                        >
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            className="w-4 h-4"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                            strokeWidth={2.5}
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                            />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+
+                    {ddragonVersion && (
+                      <span className="text-[11px] text-slate-400 px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-800 self-end sm:self-auto">
+                        Data Dragon v{ddragonVersion} ({champions.length}명)
+                      </span>
+                    )}
+                  </div>
+
+                  {/* 역할군 필터 탭 (이미 선택된 카테고리를 다시 클릭하면 'ALL'로 복귀) */}
+                  <div className="flex flex-wrap gap-1.5">
+                    {ROLE_FILTERS.map((role) => (
+                      <button
+                        key={role.tag}
+                        type="button"
+                        onClick={() =>
+                          setSelectedTag((prev) =>
+                            prev === role.tag && role.tag !== 'ALL'
+                              ? 'ALL'
+                              : role.tag
+                          )
+                        }
+                        className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors ${selectedTag === role.tag
+                          ? 'bg-amber-500 text-slate-950'
+                          : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                          }`}
+                      >
+                        {role.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 챔피언 초상화 그리드 */}
+                <div className="flex-1 overflow-y-auto my-3 pr-1">
+                  {isLoadingChamps ? (
+                    <div className="h-full flex flex-col items-center justify-center text-slate-400 space-y-2">
+                      <span className="w-6 h-6 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+                      <span className="text-sm">
+                        Data Dragon API에서 최신 챔피언 목록을 불러오는 중입니다...
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-7 gap-2.5">
+                      {currentStep?.actionType === 'BAN' && (
+                        <button
+                          type="button"
+                          disabled={!isMyTurn || isSubmitting}
+                          onClick={() => handleSelectChampion('NO_BAN')}
+                          className={`group flex flex-col items-center p-1.5 rounded-xl border transition-all ${bp?.hovered_champion_id === 'NO_BAN'
+                            ? 'border-amber-400 bg-amber-500/20 ring-2 ring-amber-400/50'
+                            : 'border-slate-800 bg-slate-950/70 hover:border-slate-600'
+                            } disabled:opacity-40 disabled:cursor-not-allowed`}
+                        >
+                          <div className="w-14 h-14 rounded-lg bg-slate-900 border border-slate-700 flex items-center justify-center text-xs font-bold text-slate-400">
+                            기권
+                          </div>
+                          <span className="text-[11px] font-medium text-slate-300 mt-1 truncate w-full text-center">
+                            노밴 (Skip)
+                          </span>
+                        </button>
+                      )}
+
+                      {filteredChampions.map((champ) => {
+                        const isUnavailable = unavailableIds.has(champ.id);
+                        const isFearlessBanned = fearlessIds.has(champ.id);
+                        const isHovered = bp?.hovered_champion_id === champ.id;
+
+                        return (
+                          <button
+                            key={champ.id}
+                            type="button"
+                            disabled={!isMyTurn || isUnavailable || isSubmitting}
+                            onClick={() => handleSelectChampion(champ.id)}
+                            className={`group relative flex flex-col items-center p-1.5 rounded-xl border transition-all ${isHovered
+                              ? 'border-amber-400 bg-amber-500/20 ring-2 ring-amber-400/60 scale-[1.02]'
+                              : isUnavailable
+                                ? 'border-slate-900 bg-slate-950/30 opacity-35 cursor-not-allowed'
+                                : 'border-slate-800/80 bg-slate-950/60 hover:border-slate-600'
+                              } disabled:cursor-not-allowed`}
+                          >
+                            <div className="relative w-14 h-14 rounded-lg overflow-hidden bg-slate-900">
+                              <img
+                                src={champ.imageUrl}
+                                alt={champ.name}
+                                loading="lazy"
+                                className={`w-full h-full object-cover ${isUnavailable ? 'grayscale' : ''
+                                  }`}
+                              />
+                              {isUnavailable && (
+                                <div className="absolute inset-0 bg-slate-950/75 flex items-center justify-center">
+                                  <span
+                                    className={`text-[10px] font-black uppercase ${isFearlessBanned
+                                      ? 'text-amber-400'
+                                      : 'text-rose-400'
+                                      }`}
+                                  >
+                                    {isFearlessBanned ? '피어리스' : '불가'}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                            <span className="text-[11px] font-medium text-slate-200 mt-1 truncate w-full text-center">
+                              {champ.name}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* 하단: 에러 알림 및 '선택 완료(Lock-in)' 버튼 */}
+                <div className="pt-3 border-t border-slate-800 space-y-2">
+                  {errorMessage && (
+                    <div className="rounded-lg bg-rose-950/70 border border-rose-500/50 px-3 py-1.5 text-xs text-rose-200 text-center">
+                      {errorMessage}
+                    </div>
+                  )}
+
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+                    <div className="text-xs text-slate-300">
+                      {match.status === 'BANPICK_IN_PROGRESS' && currentStep ? (
+                        isMyTurn ? (
+                          bp?.hovered_champion_id ? (
+                            <span>
+                              선택 대기 중:{' '}
+                              <strong className="text-amber-400 text-sm">
+                                {bp.hovered_champion_id === 'NO_BAN'
+                                  ? '노밴 (기권)'
+                                  : championMap.get(bp.hovered_champion_id)
+                                    ?.name ?? bp.hovered_champion_id}
+                              </strong>{' '}
+                              — 우측 버튼을 눌러 확정하세요.
+                            </span>
+                          ) : (
+                            <span className="text-amber-300 font-semibold">
+                              우리 팀({viewerSide})의{' '}
+                              {currentStep.actionType === 'BAN'
+                                ? '밴 차례입니다! 챔피언을 선택해주세요.'
+                                : '픽 차례입니다! \n 아무것도 선택하지 않으면 랜덤 픽으로 결정됩니다.'}
+                            </span>
+                          )
+                        ) : (
+                          <span className="text-slate-400">
+                            현재{' '}
+                            <strong className="text-white">
+                              {currentStep.side === 'BLUE'
+                                ? `${blueTeamName} (BLUE)`
+                                : `${redTeamName} (RED)`}
+                            </strong>{' '}
+                            팀이 {currentStep.label}을 진행하고 있습니다...
+                          </span>
+                        )
+                      ) : match.status === 'COMPLETED' ? null : (
+                        <span className="text-slate-400">
+                          상단 [토너먼트 드래프트 밴픽 시작하기] 버튼을 누르면 1차 밴부터 시작됩니다.
+                        </span>
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={
+                        !isMyTurn || !bp?.hovered_champion_id || isSubmitting
+                      }
+                      onClick={handleLockIn}
+                      className={`w-full sm:w-auto px-7 py-2.5 rounded-xl font-extrabold text-sm transition-all ${currentStep?.actionType === 'BAN'
+                        ? 'bg-rose-600 hover:bg-rose-500 text-white shadow-lg shadow-rose-600/20'
+                        : 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-lg shadow-amber-500/20'
+                        } disabled:opacity-35 disabled:cursor-not-allowed`}
+                    >
+                      {isSubmitting
+                        ? '동기화 중...'
+                        : currentStep?.actionType === 'BAN'
+                          ? '챔피언 밴 완료 (Lock-in)'
+                          : '선택 완료 (Lock-in)'}
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
           </section>
 
           {/* 밴픽 종료(COMPLETED) 시 선택 완료 박스 아래에 표시되는 드라이브 저장 및 다음 세트 진행 컨트롤 */}
@@ -1611,81 +1668,97 @@ export default function BanPickDraftScreen({
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-extrabold text-amber-300">
                       {isScrimRoom
-                        ? `🎮 [스크림 다전제] ${seriesState.current_game}세트 승리팀 선택`
+                        ? `🎮 [스크림 전용] ${seriesState.current_game}세트 승리팀 선택`
                         : `👑 [관리자 전용] ${seriesState.current_game}세트 승리팀 확정`}
                     </span>
                     <button
                       type="button"
                       onClick={() => setNextGameFearless((prev) => !prev)}
-                      className={`px-2.5 py-0.5 rounded text-[11px] font-extrabold border transition-colors ${
-                        nextGameFearless
-                          ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
-                          : 'bg-slate-800 text-slate-400 border-slate-700'
-                      }`}
+                      className={`px-2.5 py-0.5 rounded text-[11px] font-extrabold border transition-colors ${nextGameFearless
+                        ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                        : 'bg-slate-800 text-slate-400 border-slate-700'
+                        }`}
                     >
                       🔥 하드 피어리스: {nextGameFearless ? 'ON' : 'OFF'}
                     </button>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setNextGameFirstTeam(seriesState.team_b_name)
-                      }
-                      className={`py-2 px-2.5 rounded-lg text-xs font-bold border transition-all text-left ${
-                        nextGameFirstTeam === seriesState.team_b_name
-                          ? 'border-amber-400 bg-amber-500/20 text-amber-200 ring-1 ring-amber-400/50'
-                          : 'border-slate-800 bg-slate-900 text-slate-400 hover:border-slate-700'
-                      }`}
-                    >
-                      <div className="text-[11px] text-emerald-300 font-extrabold">
-                        🏆 {seriesState.current_game}세트 승리: {seriesState.team_a_name}
-                      </div>
-                      <div className="mt-0.5 text-amber-300 font-black">
-                        → {seriesState.current_game + 1}세트 FIRST:{' '}
-                        {seriesState.team_b_name}
-                      </div>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setNextGameFirstTeam(seriesState.team_a_name)
-                      }
-                      className={`py-2 px-2.5 rounded-lg text-xs font-bold border transition-all text-left ${
-                        nextGameFirstTeam === seriesState.team_a_name
-                          ? 'border-amber-400 bg-amber-500/20 text-amber-200 ring-1 ring-amber-400/50'
-                          : 'border-slate-800 bg-slate-900 text-slate-400 hover:border-slate-700'
-                      }`}
-                    >
-                      <div className="text-[11px] text-emerald-300 font-extrabold">
-                        🏆 {seriesState.current_game}세트 승리: {seriesState.team_b_name}
-                      </div>
-                      <div className="mt-0.5 text-amber-300 font-black">
-                        → {seriesState.current_game + 1}세트 FIRST:{' '}
-                        {seriesState.team_a_name}
-                      </div>
-                    </button>
-                  </div>
+                  {(() => {
+                    const isSameTeamName =
+                      seriesState.team_a_name === seriesState.team_b_name;
+                    const teamASideKor = teamASide === 'BLUE' ? '블루' : '레드';
+                    const teamBSideKor = teamBSide === 'BLUE' ? '블루' : '레드';
 
-                  <button
-                    type="button"
-                    disabled={isSubmitting}
-                    onClick={() =>
-                      onDispatchBanPick({
-                        type: 'START_NEXT_GAME',
-                        nextFirstTeamName: nextGameFirstTeam,
-                        fearlessEnabled: nextGameFearless,
-                      })
-                    }
-                    className="w-full py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-extrabold transition-all disabled:opacity-50"
-                  >
-                    승리팀(
-                    {nextGameFirstTeam === seriesState.team_a_name
-                      ? seriesState.team_b_name
-                      : seriesState.team_a_name}
-                    ) 확정 · {seriesState.current_game + 1}세트 RoFS 시작하기 →
-                  </button>
+                    const teamALabel = isSameTeamName
+                      ? `${teamASideKor} 진영 ${seriesState.team_a_name}`
+                      : `${seriesState.team_a_name} [${teamASideKor}]`;
+                    const teamBLabel = isSameTeamName
+                      ? `${teamBSideKor} 진영 ${seriesState.team_b_name}`
+                      : `${seriesState.team_b_name} [${teamBSideKor}]`;
+
+                    const teamANextFirstLabel = isSameTeamName
+                      ? `${seriesState.team_a_name}`
+                      : seriesState.team_a_name;
+                    const teamBNextFirstLabel = isSameTeamName
+                      ? `${seriesState.team_b_name}`
+                      : seriesState.team_b_name;
+
+                    return (
+                      <>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setNextFirstRole('TEAM_B')}
+                            className={`py-2 px-2.5 rounded-lg text-xs font-bold border transition-all text-left ${nextFirstRole === 'TEAM_B'
+                              ? 'border-amber-400 bg-amber-500/20 text-amber-200 ring-1 ring-amber-400/50'
+                              : 'border-slate-800 bg-slate-900 text-slate-400 hover:border-slate-700'
+                              }`}
+                          >
+                            <div className="text-[11px] text-emerald-300 font-extrabold">
+                              🏆 {seriesState.current_game}세트 승리: {teamALabel}
+                            </div>
+                            <div className="mt-0.5 text-amber-300 font-black">
+                              → {seriesState.current_game + 1}세트 FIRST: {teamBNextFirstLabel}
+                            </div>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setNextFirstRole('TEAM_A')}
+                            className={`py-2 px-2.5 rounded-lg text-xs font-bold border transition-all text-left ${nextFirstRole === 'TEAM_A'
+                              ? 'border-amber-400 bg-amber-500/20 text-amber-200 ring-1 ring-amber-400/50'
+                              : 'border-slate-800 bg-slate-900 text-slate-400 hover:border-slate-700'
+                              }`}
+                          >
+                            <div className="text-[11px] text-emerald-300 font-extrabold">
+                              🏆 {seriesState.current_game}세트 승리: {teamBLabel}
+                            </div>
+                            <div className="mt-0.5 text-amber-300 font-black">
+                              → {seriesState.current_game + 1}세트 FIRST: {teamANextFirstLabel}
+                            </div>
+                          </button>
+                        </div>
+
+                        <button
+                          type="button"
+                          disabled={isSubmitting}
+                          onClick={() =>
+                            onDispatchBanPick({
+                              type: 'START_NEXT_GAME',
+                              nextFirstTeamName:
+                                nextFirstRole === 'TEAM_A'
+                                  ? seriesState.team_a_name
+                                  : seriesState.team_b_name,
+                              nextFirstRole,
+                              fearlessEnabled: nextGameFearless,
+                            })
+                          }
+                          className="w-full py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-extrabold transition-all disabled:opacity-50"
+                        >
+                          승리팀 확정 · {seriesState.current_game + 1}세트 RoFS 시작하기 →
+                        </button>
+                      </>
+                    );
+                  })()}
                 </div>
               ) : (
                 <div className="w-full rounded-xl bg-slate-950/90 border border-slate-800 p-3 space-y-2 text-center">

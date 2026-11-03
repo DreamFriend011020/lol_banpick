@@ -495,24 +495,35 @@ export default function AdminPage() {
   // 관리자 전용: 현재 세트 패배팀을 지정하여 다음 세트(패배팀 = FIRST) RoFS 시작
   const handleAdminConfirmSetLoserAndStartNext = async (
     m: MatchState,
-    loserTeamName: string
+    loserTeamName: string,
+    loserRole?: 'TEAM_A' | 'TEAM_B'
   ) => {
     const series = getSeriesState(m);
+    const resolvedLoserRole: 'TEAM_A' | 'TEAM_B' =
+      loserRole ?? (loserTeamName === series.team_b_name ? 'TEAM_B' : 'TEAM_A');
+    const winnerRole: 'TEAM_A' | 'TEAM_B' =
+      resolvedLoserRole === 'TEAM_A' ? 'TEAM_B' : 'TEAM_A';
     const winnerTeamName =
-      loserTeamName === series.team_a_name
-        ? series.team_b_name
-        : series.team_a_name;
+      winnerRole === 'TEAM_A' ? series.team_a_name : series.team_b_name;
 
     const res = transitionBanPickState(m, {
       type: 'START_NEXT_GAME',
       nextFirstTeamName: loserTeamName,
+      nextFirstRole: resolvedLoserRole,
       fearlessEnabled: series.fearless_enabled,
     });
 
     if (res.ok) {
       await syncAdminMatchUpdate(res.state);
+      const isSameTeamName = series.team_a_name === series.team_b_name;
+      const winnerLabel = isSameTeamName
+        ? `${winnerRole === 'TEAM_A' ? '1팀장' : '2팀장'} (${winnerTeamName})`
+        : winnerTeamName;
+      const loserLabel = isSameTeamName
+        ? `${resolvedLoserRole === 'TEAM_A' ? '1팀장' : '2팀장'} (${loserTeamName})`
+        : loserTeamName;
       setNotice(
-        `[${m.match_id}] ${series.current_game}세트 결과 확정 (${winnerTeamName} 승 / ${loserTeamName} 패) → ${series.current_game + 1}세트 FIRST 팀으로 '${loserTeamName}' 배정 및 RoFS가 시작되었습니다!`
+        `[${m.match_id}] ${series.current_game}세트 결과 확정 (${winnerLabel} 승 / ${loserLabel} 패) → ${series.current_game + 1}세트 FIRST 팀으로 '${loserLabel}' 배정 및 RoFS가 시작되었습니다!`
       );
     }
   };
@@ -1176,34 +1187,48 @@ export default function AdminPage() {
                             <span className="text-[11px] text-slate-400">
                               {series.current_game}세트 승리팀 클릭 시 즉시 {series.current_game + 1}세트 시작:
                             </span>
-                            <div className="flex flex-wrap items-center gap-1.5">
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  handleAdminConfirmSetLoserAndStartNext(
-                                    m,
-                                    series.team_b_name
-                                  )
-                                }
-                                className="px-2.5 py-1 rounded-lg bg-slate-950 hover:bg-amber-500/20 text-[11px] font-bold text-amber-300 border border-amber-500/40 transition-colors"
-                              >
-                                🏆 {series.team_a_name} 승리 →{' '}
-                                {series.current_game + 1}세트 FIRST: {series.team_b_name}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  handleAdminConfirmSetLoserAndStartNext(
-                                    m,
-                                    series.team_a_name
-                                  )
-                                }
-                                className="px-2.5 py-1 rounded-lg bg-slate-950 hover:bg-cyan-500/20 text-[11px] font-bold text-cyan-300 border border-cyan-500/40 transition-colors"
-                              >
-                                🏆 {series.team_b_name} 승리 →{' '}
-                                {series.current_game + 1}세트 FIRST: {series.team_a_name}
-                              </button>
-                            </div>
+                            {(() => {
+                              const isSameTeamName =
+                                series.team_a_name === series.team_b_name;
+                              const labelA = isSameTeamName
+                                ? `1팀장 (${series.team_a_name})`
+                                : series.team_a_name;
+                              const labelB = isSameTeamName
+                                ? `2팀장 (${series.team_b_name})`
+                                : series.team_b_name;
+                              return (
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handleAdminConfirmSetLoserAndStartNext(
+                                        m,
+                                        series.team_b_name,
+                                        'TEAM_B'
+                                      )
+                                    }
+                                    className="px-2.5 py-1 rounded-lg bg-slate-950 hover:bg-amber-500/20 text-[11px] font-bold text-amber-300 border border-amber-500/40 transition-colors"
+                                  >
+                                    🏆 {labelA} 승리 →{' '}
+                                    {series.current_game + 1}세트 FIRST: {labelB}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handleAdminConfirmSetLoserAndStartNext(
+                                        m,
+                                        series.team_a_name,
+                                        'TEAM_A'
+                                      )
+                                    }
+                                    className="px-2.5 py-1 rounded-lg bg-slate-950 hover:bg-cyan-500/20 text-[11px] font-bold text-cyan-300 border border-cyan-500/40 transition-colors"
+                                  >
+                                    🏆 {labelB} 승리 →{' '}
+                                    {series.current_game + 1}세트 FIRST: {labelA}
+                                  </button>
+                                </div>
+                              );
+                            })()}
                           </div>
                         </td>
                         <td className="py-3 px-3">

@@ -1,6 +1,7 @@
 import {
   getTeamFearlessChampionIds,
   isMatchAutoSaveEnabled,
+  resolvePickOrderSides,
 } from './banpickMachine';
 import { ChampionInfo, MatchState } from '../types/match';
 
@@ -65,7 +66,8 @@ export async function renderBanPickResultToDataUrl(
   const bp = match.banpick_state;
   const blueTeam = match.selected_side?.blue ?? match.team_first_name;
   const redTeam = match.selected_side?.red ?? match.team_second_name;
-  const isBlueFirstPick = match.pick_turn?.first_pick === blueTeam;
+  const { firstPickSide } = resolvePickOrderSides(match);
+  const isBlueFirstPick = firstPickSide === 'BLUE';
 
   // 1. 배경 그라데이션
   const bgGrad = ctx.createLinearGradient(0, 0, width, height);
@@ -100,7 +102,7 @@ export async function renderBanPickResultToDataUrl(
   ctx.fillStyle = isBlueFirstPick ? '#fbbf24' : '#94a3b8';
   ctx.font = 'bold 18px sans-serif';
   ctx.fillText(
-    isBlueFirstPick ? '선픽 (FIRST PICK)' : '후픽 (LAST PICK)',
+    isBlueFirstPick ? '선픽' : '후픽',
     90,
     145
   );
@@ -149,7 +151,7 @@ export async function renderBanPickResultToDataUrl(
   ctx.fillStyle = !isBlueFirstPick ? '#fbbf24' : '#94a3b8';
   ctx.font = 'bold 18px sans-serif';
   ctx.fillText(
-    !isBlueFirstPick ? '선픽 (FIRST PICK)' : '후픽 (LAST PICK)',
+    !isBlueFirstPick ? '선픽' : '후픽',
     width - 90,
     145
   );
@@ -472,10 +474,10 @@ export async function saveBanPickScreenForStaff(
     customFolderId?: string;
     customWebhookUrl?: string;
   } = {
-    triggerBrowserDownload: false,
-    uploadToDrive: true,
-    isManualRetry: false,
-  }
+      triggerBrowserDownload: false,
+      uploadToDrive: true,
+      isManualRetry: false,
+    }
 ): Promise<{
   ok: boolean;
   fileName: string;

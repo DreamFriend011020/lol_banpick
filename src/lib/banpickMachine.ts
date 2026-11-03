@@ -18,16 +18,96 @@ export const SWAP_DURATION_MS = SWAP_DURATION_SECONDS * 1000;
 export const TOTAL_DRAFT_TURNS = 20;
 
 /**
- * RoFS 결과(selected_side, pick_turn)에 따라
- * 어느 진영('BLUE' | 'RED')이 선픽(first_pick)이고 후픽(last_pick)인지 판별합니다.
+ * RoFS 선택(rofs_submissions) 또는 진영 정보를 바탕으로
+ * FIRST 팀의 실제 진영('BLUE' | 'RED')을 판별합니다.
  */
-export function resolvePickOrderSides(match?: Pick<MatchState, 'selected_side' | 'pick_turn'> | null): {
+export function resolveFirstTeamSide(
+  match?: Pick<
+    MatchState,
+    'selected_side' | 'rofs_submissions' | 'team_first_name' | 'team_second_name'
+  > | null
+): SideChoice {
+  if (!match) return 'BLUE';
+
+  const firstChoice = match.rofs_submissions?.first_choice;
+  const secondChoice = match.rofs_submissions?.second_choice;
+
+  if (firstChoice && secondChoice) {
+    if (firstChoice.category === 'SIDE') {
+      return firstChoice.choice;
+    } else if (secondChoice.sideChoice) {
+      return secondChoice.sideChoice === 'BLUE' ? 'RED' : 'BLUE';
+    }
+  }
+
+  if (
+    match.selected_side &&
+    match.team_first_name &&
+    match.team_first_name !== match.team_second_name
+  ) {
+    if (match.selected_side.blue === match.team_first_name) return 'BLUE';
+    if (match.selected_side.red === match.team_first_name) return 'RED';
+  }
+
+  return 'BLUE';
+}
+
+/**
+ * RoFS 결과에 따라 어느 진영('BLUE' | 'RED')이 선픽(first_pick)이고 후픽(last_pick)인지 판별합니다.
+ * 두 팀의 팀명이 동일한 경우에도 rofs_submissions의 실제 선택을 직접 역추적하여 100% 정확하게 선픽 진영을 반환합니다.
+ */
+export function resolvePickOrderSides(
+  match?: Pick<
+    MatchState,
+    'selected_side' | 'pick_turn' | 'rofs_submissions' | 'team_first_name' | 'team_second_name'
+  > | null
+): {
   firstPickSide: SideChoice;
   lastPickSide: SideChoice;
 } {
+  if (!match) {
+    return {
+      firstPickSide: 'BLUE',
+      lastPickSide: 'RED',
+    };
+  }
+
+  const firstChoice = match.rofs_submissions?.first_choice;
+  const secondChoice = match.rofs_submissions?.second_choice;
+
+  // 1. rofs_submissions가 완료된 상태라면 팀명 중복 여부와 무관하게 실제 선택 규칙으로 정확히 계산
+  if (firstChoice && secondChoice) {
+    let firstSide: SideChoice = 'BLUE';
+    let firstTeamIsFirstPick = false;
+
+    if (firstChoice.category === 'SIDE') {
+      firstSide = firstChoice.choice;
+      // FIRST 팀이 진영을 골랐으므로, SECOND 팀이 픽 순서를 결정
+      firstTeamIsFirstPick = secondChoice.pickOrderChoice === 'LAST_PICK';
+    } else {
+      // FIRST 팀이 픽 순서를 골랐으므로, SECOND 팀이 진영을 결정
+      firstTeamIsFirstPick = firstChoice.choice === 'FIRST_PICK';
+      firstSide = secondChoice.sideChoice === 'BLUE' ? 'RED' : 'BLUE';
+    }
+
+    const firstPickSide: SideChoice = firstTeamIsFirstPick
+      ? firstSide
+      : firstSide === 'BLUE'
+        ? 'RED'
+        : 'BLUE';
+
+    return {
+      firstPickSide,
+      lastPickSide: firstPickSide === 'BLUE' ? 'RED' : 'BLUE',
+    };
+  }
+
+  // 2. rofs_submissions가 없는 경우 (단위 테스트 또는 직접 설정된 mock)
+  // 팀명이 서로 다른 경우에만 이름 기반 비교 (팀명이 같으면 무조건 RED 선픽으로 오인되는 것 방지)
   if (
-    match?.selected_side &&
-    match?.pick_turn &&
+    match.selected_side &&
+    match.pick_turn &&
+    match.selected_side.blue !== match.selected_side.red &&
     match.pick_turn.first_pick === match.selected_side.red
   ) {
     return {
@@ -52,7 +132,10 @@ export function resolvePickOrderSides(match?: Pick<MatchState, 'selected_side' |
  * - 2차 픽 (4턴): 1-2-1 순서 (후4 -> 선4 -> 선5 -> 후5[막픽])
  */
 export function getDraftSequence(
-  match?: Pick<MatchState, 'selected_side' | 'pick_turn'> | null
+  match?: Pick<
+    MatchState,
+    'selected_side' | 'pick_turn' | 'rofs_submissions' | 'team_first_name' | 'team_second_name'
+  > | null
 ): DraftTurnStep[] {
   const { firstPickSide, lastPickSide } = resolvePickOrderSides(match);
 
@@ -62,15 +145,15 @@ export function getDraftSequence(
 
   return [
     // ======================== 1차 밴 페이즈 (총 6턴: 선픽 진영 선밴) ========================
-    { turnIndex: 0, phase: 'PHASE1_BAN', actionType: 'BAN', side: FP, slotIndex: 0, label: `${sideKor(FP)} 1밴 (선픽팀)` },
-    { turnIndex: 1, phase: 'PHASE1_BAN', actionType: 'BAN', side: LP, slotIndex: 0, label: `${sideKor(LP)} 1밴 (후픽팀)` },
-    { turnIndex: 2, phase: 'PHASE1_BAN', actionType: 'BAN', side: FP, slotIndex: 1, label: `${sideKor(FP)} 2밴 (선픽팀)` },
-    { turnIndex: 3, phase: 'PHASE1_BAN', actionType: 'BAN', side: LP, slotIndex: 1, label: `${sideKor(LP)} 2밴 (후픽팀)` },
-    { turnIndex: 4, phase: 'PHASE1_BAN', actionType: 'BAN', side: FP, slotIndex: 2, label: `${sideKor(FP)} 3밴 (선픽팀)` },
-    { turnIndex: 5, phase: 'PHASE1_BAN', actionType: 'BAN', side: LP, slotIndex: 2, label: `${sideKor(LP)} 3밴 (후픽팀)` },
+    { turnIndex: 0, phase: 'PHASE1_BAN', actionType: 'BAN', side: FP, slotIndex: 0, label: `${sideKor(FP)} 1밴` },
+    { turnIndex: 1, phase: 'PHASE1_BAN', actionType: 'BAN', side: LP, slotIndex: 0, label: `${sideKor(LP)} 1밴` },
+    { turnIndex: 2, phase: 'PHASE1_BAN', actionType: 'BAN', side: FP, slotIndex: 1, label: `${sideKor(FP)} 2밴` },
+    { turnIndex: 3, phase: 'PHASE1_BAN', actionType: 'BAN', side: LP, slotIndex: 1, label: `${sideKor(LP)} 2밴` },
+    { turnIndex: 4, phase: 'PHASE1_BAN', actionType: 'BAN', side: FP, slotIndex: 2, label: `${sideKor(FP)} 3밴` },
+    { turnIndex: 5, phase: 'PHASE1_BAN', actionType: 'BAN', side: LP, slotIndex: 2, label: `${sideKor(LP)} 3밴` },
 
     // ======================== 1차 픽 페이즈 (1-2-2-1, 총 6턴: 선픽 진영 1픽) ================
-    { turnIndex: 6, phase: 'PHASE1_PICK', actionType: 'PICK', side: FP, slotIndex: 0, label: `${sideKor(FP)} 1픽 (선픽)` },
+    { turnIndex: 6, phase: 'PHASE1_PICK', actionType: 'PICK', side: FP, slotIndex: 0, label: `${sideKor(FP)} 1픽` },
     { turnIndex: 7, phase: 'PHASE1_PICK', actionType: 'PICK', side: LP, slotIndex: 0, label: `${sideKor(LP)} 1픽` },
     { turnIndex: 8, phase: 'PHASE1_PICK', actionType: 'PICK', side: LP, slotIndex: 1, label: `${sideKor(LP)} 2픽` },
     { turnIndex: 9, phase: 'PHASE1_PICK', actionType: 'PICK', side: FP, slotIndex: 1, label: `${sideKor(FP)} 2픽` },
@@ -78,16 +161,16 @@ export function getDraftSequence(
     { turnIndex: 11, phase: 'PHASE1_PICK', actionType: 'PICK', side: LP, slotIndex: 2, label: `${sideKor(LP)} 3픽` },
 
     // ======================== 2차 밴 페이즈 (총 4턴: 후픽 진영 선밴) ========================
-    { turnIndex: 12, phase: 'PHASE2_BAN', actionType: 'BAN', side: LP, slotIndex: 3, label: `${sideKor(LP)} 4밴 (후픽팀)` },
-    { turnIndex: 13, phase: 'PHASE2_BAN', actionType: 'BAN', side: FP, slotIndex: 3, label: `${sideKor(FP)} 4밴 (선픽팀)` },
-    { turnIndex: 14, phase: 'PHASE2_BAN', actionType: 'BAN', side: LP, slotIndex: 4, label: `${sideKor(LP)} 5밴 (후픽팀)` },
-    { turnIndex: 15, phase: 'PHASE2_BAN', actionType: 'BAN', side: FP, slotIndex: 4, label: `${sideKor(FP)} 5밴 (선픽팀)` },
+    { turnIndex: 12, phase: 'PHASE2_BAN', actionType: 'BAN', side: LP, slotIndex: 3, label: `${sideKor(LP)} 4밴` },
+    { turnIndex: 13, phase: 'PHASE2_BAN', actionType: 'BAN', side: FP, slotIndex: 3, label: `${sideKor(FP)} 4밴` },
+    { turnIndex: 14, phase: 'PHASE2_BAN', actionType: 'BAN', side: LP, slotIndex: 4, label: `${sideKor(LP)} 5밴` },
+    { turnIndex: 15, phase: 'PHASE2_BAN', actionType: 'BAN', side: FP, slotIndex: 4, label: `${sideKor(FP)} 5밴` },
 
     // ======================== 2차 픽 페이즈 (1-2-1, 총 4턴: 후픽 진영 막픽) ==================
     { turnIndex: 16, phase: 'PHASE2_PICK', actionType: 'PICK', side: LP, slotIndex: 3, label: `${sideKor(LP)} 4픽` },
     { turnIndex: 17, phase: 'PHASE2_PICK', actionType: 'PICK', side: FP, slotIndex: 3, label: `${sideKor(FP)} 4픽` },
     { turnIndex: 18, phase: 'PHASE2_PICK', actionType: 'PICK', side: FP, slotIndex: 4, label: `${sideKor(FP)} 5픽` },
-    { turnIndex: 19, phase: 'PHASE2_PICK', actionType: 'PICK', side: LP, slotIndex: 4, label: `${sideKor(LP)} 5픽 (막픽)` },
+    { turnIndex: 19, phase: 'PHASE2_PICK', actionType: 'PICK', side: LP, slotIndex: 4, label: `${sideKor(LP)} 5픽` },
   ];
 }
 
@@ -128,7 +211,10 @@ export function isInSwapPhase(match?: MatchState | null): boolean {
  */
 export function getCurrentTurnStep(
   banPickState?: BanPickState | null,
-  match?: Pick<MatchState, 'selected_side' | 'pick_turn'> | null
+  match?: Pick<
+    MatchState,
+    'selected_side' | 'pick_turn' | 'rofs_submissions' | 'team_first_name' | 'team_second_name'
+  > | null
 ): DraftTurnStep | null {
   if (!banPickState) return null;
   const sequence = getDraftSequence(match);
@@ -160,9 +246,9 @@ export function getSeriesState(match?: MatchState | null): SeriesState {
     typeof raw?.is_scrim === 'boolean'
       ? raw.is_scrim
       : Boolean(
-          match?.match_id?.startsWith('scrim-') ||
-            match?.tournament_name?.includes('스크림')
-        );
+        match?.match_id?.startsWith('scrim-') ||
+        match?.tournament_name?.includes('스크림')
+      );
 
   return {
     total_games: totalGames,
@@ -173,14 +259,23 @@ export function getSeriesState(match?: MatchState | null): SeriesState {
       : [],
     fearless_picks_by_team:
       raw?.fearless_picks_by_team &&
-      typeof raw.fearless_picks_by_team === 'object'
+        typeof raw.fearless_picks_by_team === 'object'
         ? raw.fearless_picks_by_team
         : {},
     game_first_teams:
       Array.isArray(raw?.game_first_teams) && raw.game_first_teams.length > 0
         ? raw.game_first_teams
         : defaultSchedule,
+    game_first_roles:
+      Array.isArray(raw?.game_first_roles) && raw.game_first_roles.length > 0
+        ? raw.game_first_roles
+        : Array.from({ length: totalGames }, (_, idx) =>
+          idx % 2 === 0 ? 'TEAM_A' : 'TEAM_B'
+        ),
     set_winners: Array.isArray(raw?.set_winners) ? raw.set_winners : [],
+    set_winners_roles: Array.isArray(raw?.set_winners_roles)
+      ? raw.set_winners_roles
+      : [],
     team_a_name: teamA,
     team_b_name: teamB,
     auto_save_enabled: resolvedAutoSave,
@@ -250,27 +345,92 @@ export function getTeamFearlessChampionIds(
       : match.selected_side?.red ?? match.team_second_name;
 
   const byTeam = series.fearless_picks_by_team ?? {};
-  const teamPicks = byTeam[teamName];
-  if (Array.isArray(teamPicks) && teamPicks.length > 0) {
-    return teamPicks.filter((id): id is string => Boolean(id && id !== 'NO_BAN'));
+  const isSameTeamName = series.team_a_name === series.team_b_name;
+  const expectedCount = Math.max(0, (series.current_game - 1) * 5);
+
+  const firstSide = resolveFirstTeamSide(match);
+  const currentFirstRole =
+    series.game_first_roles?.[series.current_game - 1] ?? 'TEAM_A';
+  const teamASide =
+    currentFirstRole === 'TEAM_A'
+      ? firstSide
+      : firstSide === 'BLUE'
+        ? 'RED'
+        : 'BLUE';
+  const isTeamA =
+    match.selected_side?.blue === 'TEAM_A' ||
+    (side === 'BLUE' && !match.selected_side) ||
+    side === teamASide;
+
+  // 1. 팀명이 같을 때는 TEAM_A / TEAM_B 고유 키 우선 조회
+  if (isSameTeamName) {
+    const key = isTeamA ? 'TEAM_A' : 'TEAM_B';
+    const picks = byTeam[key];
+    if (Array.isArray(picks) && picks.length >= expectedCount && expectedCount > 0) {
+      return picks.filter((id): id is string => Boolean(id && id !== 'NO_BAN'));
+    }
+  } else {
+    // 2. 팀명이 다를 때는 팀명 키 우선 조회
+    const picks = byTeam[teamName];
+    if (Array.isArray(picks) && picks.length >= expectedCount && expectedCount > 0) {
+      return picks.filter((id): id is string => Boolean(id && id !== 'NO_BAN'));
+    }
   }
 
-  // 이전 버전 데이터 호환 폴백: 10개 단위(블루 5픽 + 레드 5픽)로 저장된 목록에서 분리
-  if (
-    Object.keys(byTeam).length === 0 &&
-    series.fearless_used_champions.length > 0
-  ) {
+  // 3. 만약 byTeam에 누적된 픽이 부족한 경우 (이전 버전 데이터 또는 세트 전환 시 누락)
+  //    10개 단위(블루 5픽 + 레드 5픽)로 보존된 fearless_used_champions에서 세트별로 안전 복원
+  if (series.fearless_used_champions.length > 0) {
     const result: string[] = [];
-    const isTeamA = teamName === series.team_a_name;
-    for (let i = 0; i < series.fearless_used_champions.length; i++) {
-      const posInSet = i % 10;
-      if (isTeamA && posInSet < 5) {
-        result.push(series.fearless_used_champions[i]);
-      } else if (!isTeamA && posInSet >= 5) {
-        result.push(series.fearless_used_champions[i]);
+    const totalFinishedSets = Math.min(
+      series.current_game - 1,
+      Math.floor(series.fearless_used_champions.length / 10)
+    );
+
+    for (let setIdx = 0; setIdx < totalFinishedSets; setIdx++) {
+      const setStart = setIdx * 10;
+      const blueBlock = series.fearless_used_champions.slice(setStart, setStart + 5);
+      const redBlock = series.fearless_used_champions.slice(setStart + 5, setStart + 10);
+
+      // 해당 세트에서 이 팀이 블루였는지 레드였는지 판별
+      let targetSetIsBlue = false;
+      const key = isTeamA ? 'TEAM_A' : 'TEAM_B';
+      const existingTeamPicks = new Set(byTeam[key] ?? byTeam[teamName] ?? []);
+
+      const blueMatches = blueBlock.filter((id) => existingTeamPicks.has(id)).length;
+      const redMatches = redBlock.filter((id) => existingTeamPicks.has(id)).length;
+
+      if (blueMatches > redMatches) {
+        targetSetIsBlue = true;
+      } else if (redMatches > blueMatches) {
+        targetSetIsBlue = false;
+      } else {
+        // 매칭 기록이 없으면 game_first_roles 기반 판별
+        const setFirstRole =
+          series.game_first_roles?.[setIdx] ?? (setIdx % 2 === 0 ? 'TEAM_A' : 'TEAM_B');
+        const setFirstIsThisTeam = isSameTeamName
+          ? (isTeamA ? setFirstRole === 'TEAM_A' : setFirstRole === 'TEAM_B')
+          : teamName === series.game_first_teams[setIdx];
+        targetSetIsBlue = setFirstIsThisTeam;
+      }
+
+      const setPicks = targetSetIsBlue ? blueBlock : redBlock;
+      for (const id of setPicks) {
+        if (id && id !== 'NO_BAN' && !result.includes(id)) {
+          result.push(id);
+        }
       }
     }
-    return result;
+
+    if (result.length > 0) {
+      return result;
+    }
+  }
+
+  // 4. 마지막 폴백
+  const fallbackKey = isSameTeamName ? (isTeamA ? 'TEAM_A' : 'TEAM_B') : teamName;
+  const fallbackPicks = byTeam[fallbackKey] ?? byTeam[teamName];
+  if (Array.isArray(fallbackPicks) && fallbackPicks.length > 0) {
+    return fallbackPicks.filter((id): id is string => Boolean(id && id !== 'NO_BAN'));
   }
 
   return [];
@@ -309,14 +469,7 @@ export function resolveViewerSide(
   if (viewerRole === 'OBSERVER' || !match.selected_side) return null;
 
   if (match.team_first_name === match.team_second_name) {
-    const firstChoice = match.rofs_submissions?.first_choice;
-    const secondChoice = match.rofs_submissions?.second_choice;
-    let firstSide: SideChoice = 'BLUE';
-    if (firstChoice?.category === 'SIDE') {
-      firstSide = firstChoice.choice;
-    } else if (secondChoice?.sideChoice) {
-      firstSide = secondChoice.sideChoice === 'BLUE' ? 'RED' : 'BLUE';
-    }
+    const firstSide = resolveFirstTeamSide(match);
     return viewerRole === 'FIRST'
       ? firstSide
       : firstSide === 'BLUE'
@@ -364,6 +517,12 @@ export function transitionBanPickState(
   // 0-1. 하드 피어리스(Hard Fearless) ON/OFF 토글 액션
   if (action.type === 'TOGGLE_FEARLESS') {
     const currentSeries = getSeriesState(state);
+    if (!currentSeries.is_scrim) {
+      return {
+        ok: false,
+        error: '공식 대회 경기에서는 관리자만 하드 피어리스 룰을 변경할 수 있습니다.',
+      };
+    }
     const updatedSeries: SeriesState = {
       ...currentSeries,
       fearless_enabled: action.enabled,
@@ -390,13 +549,13 @@ export function transitionBanPickState(
 
     const bluePicks = state.banpick_state
       ? state.banpick_state.blue_picks.filter((id): id is string =>
-          Boolean(id && id !== 'NO_BAN')
-        )
+        Boolean(id && id !== 'NO_BAN')
+      )
       : [];
     const redPicks = state.banpick_state
       ? state.banpick_state.red_picks.filter((id): id is string =>
-          Boolean(id && id !== 'NO_BAN')
-        )
+        Boolean(id && id !== 'NO_BAN')
+      )
       : [];
 
     const currentPicks = [...bluePicks, ...redPicks];
@@ -406,31 +565,83 @@ export function transitionBanPickState(
     );
 
     const prevTeamPicks = currentSeries.fearless_picks_by_team ?? {};
-    const updatedTeamPicks: Record<string, string[]> = {
-      ...prevTeamPicks,
-      [prevBlueTeam]: Array.from(
-        new Set([...(prevTeamPicks[prevBlueTeam] ?? []), ...bluePicks])
-      ),
-      [prevRedTeam]: Array.from(
-        new Set([...(prevTeamPicks[prevRedTeam] ?? []), ...redPicks])
-      ),
-    };
+    const isSameName = currentSeries.team_a_name === currentSeries.team_b_name;
+
+    let updatedTeamPicks: Record<string, string[]>;
+    const prevFirstSide = resolveFirstTeamSide(state);
+    const prevFirstRole =
+      currentSeries.game_first_roles?.[currentSeries.current_game - 1] ?? 'TEAM_A';
+    const prevTeamASide =
+      prevFirstRole === 'TEAM_A'
+        ? prevFirstSide
+        : prevFirstSide === 'BLUE'
+          ? 'RED'
+          : 'BLUE';
+    const prevIsBlueTeamA =
+      state.selected_side?.blue === 'TEAM_A' ||
+      prevTeamASide === 'BLUE';
+
+    if (isSameName) {
+      // 팀명이 동일한 경우 고유 식별자('TEAM_A' / 'TEAM_B')로 픽 분리 저장
+      const blueKey = prevIsBlueTeamA ? 'TEAM_A' : 'TEAM_B';
+      const redKey = prevIsBlueTeamA ? 'TEAM_B' : 'TEAM_A';
+
+      updatedTeamPicks = {
+        ...prevTeamPicks,
+        [blueKey]: Array.from(
+          new Set([...(prevTeamPicks[blueKey] ?? []), ...bluePicks])
+        ),
+        [redKey]: Array.from(
+          new Set([...(prevTeamPicks[redKey] ?? []), ...redPicks])
+        ),
+      };
+    } else {
+      updatedTeamPicks = {
+        ...prevTeamPicks,
+        [prevBlueTeam]: Array.from(
+          new Set([...(prevTeamPicks[prevBlueTeam] ?? []), ...bluePicks])
+        ),
+        [prevRedTeam]: Array.from(
+          new Set([...(prevTeamPicks[prevRedTeam] ?? []), ...redPicks])
+        ),
+      };
+    }
 
     const nextGameNum = currentSeries.current_game + 1;
     const nextTotalGames = Math.max(currentSeries.total_games, nextGameNum);
 
     const teamA = currentSeries.team_a_name;
     const teamB = currentSeries.team_b_name;
-    const chosenFirst =
-      action.nextFirstTeamName === teamB ? teamB : teamA;
-    const chosenSecond = chosenFirst === teamA ? teamB : teamA;
+
+    let chosenFirstRole: 'TEAM_A' | 'TEAM_B';
+    if (action.nextFirstRole) {
+      chosenFirstRole = action.nextFirstRole;
+    } else if (teamA !== teamB) {
+      chosenFirstRole = action.nextFirstTeamName === teamB ? 'TEAM_B' : 'TEAM_A';
+    } else {
+      chosenFirstRole = prevFirstRole === 'TEAM_A' ? 'TEAM_B' : 'TEAM_A';
+    }
+
+    const chosenWinnerRole: 'TEAM_A' | 'TEAM_B' =
+      chosenFirstRole === 'TEAM_A' ? 'TEAM_B' : 'TEAM_A';
+
+    const chosenFirst = chosenFirstRole === 'TEAM_A' ? teamA : teamB;
+    const chosenSecond = chosenFirstRole === 'TEAM_A' ? teamB : teamA;
+    const chosenWinner = chosenWinnerRole === 'TEAM_A' ? teamA : teamB;
 
     const nextSchedule = [...currentSeries.game_first_teams];
     nextSchedule[nextGameNum - 1] = chosenFirst;
 
+    const nextRolesSchedule = [
+      ...(currentSeries.game_first_roles ?? ['TEAM_A']),
+    ];
+    nextRolesSchedule[nextGameNum - 1] = chosenFirstRole;
+
     const nextWinners = [...(currentSeries.set_winners ?? [])];
-    // 이전 세트 승리 팀 기록 (패배팀이 chosenFirst이므로 승리 팀은 chosenSecond)
-    nextWinners[currentSeries.current_game - 1] = chosenSecond;
+    nextWinners[currentSeries.current_game - 1] = chosenWinner;
+
+    const nextWinnersRoles = [...(currentSeries.set_winners_roles ?? [])];
+    nextWinnersRoles[currentSeries.current_game - 1] = chosenWinnerRole;
 
     const updatedSeries: SeriesState = {
       ...currentSeries,
@@ -443,7 +654,9 @@ export function transitionBanPickState(
       fearless_used_champions: accumulatedFearless,
       fearless_picks_by_team: updatedTeamPicks,
       game_first_teams: nextSchedule,
+      game_first_roles: nextRolesSchedule,
       set_winners: nextWinners,
+      set_winners_roles: nextWinnersRoles,
     };
 
     return {

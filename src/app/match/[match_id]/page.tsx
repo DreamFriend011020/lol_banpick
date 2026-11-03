@@ -14,6 +14,8 @@ import {
 } from '../../../lib/banpickMachine';
 import { resolveRoleFromKey } from '../../../lib/roleToken';
 import { supabase } from '../../../lib/supabaseClient';
+import { fetchLatestChampions } from '../../../lib/ddragon';
+import { ChampionInfo } from '../../../types/match';
 import RofsSelectionScreen, {
   ViewerRole,
 } from '../../../components/match/RofsSelectionScreen';
@@ -68,7 +70,7 @@ function mergeIncomingMatchState(
     typeof incomingRaw.auto_save_enabled === 'boolean'
       ? incomingRaw.auto_save_enabled
       : typeof incomingRaw.rofs_submissions?.series_state?.auto_save_enabled ===
-          'boolean'
+        'boolean'
         ? incomingRaw.rofs_submissions.series_state.auto_save_enabled
         : isMatchAutoSaveEnabled(prev);
 
@@ -107,7 +109,7 @@ function mergeIncomingMatchState(
       prev.banpick_state &&
       incoming.banpick_state &&
       prev.banpick_state.current_turn_index >
-        incoming.banpick_state.current_turn_index
+      incoming.banpick_state.current_turn_index
     ) {
       return prev;
     }
@@ -244,8 +246,15 @@ function MatchRoomContent() {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [champions, setChampions] = useState<ChampionInfo[]>([]);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const localBroadcastRef = useRef<BroadcastChannel | null>(null);
+
+  useEffect(() => {
+    fetchLatestChampions()
+      .then((res) => setChampions(res.champions))
+      .catch(() => { });
+  }, []);
 
   // ===========================================================================
   // 0. 팀별 전용 초대 링크(?key=...) 보안 키를 검증하여 권한(FIRST / SECOND / OBSERVER) 고정
@@ -417,7 +426,7 @@ function MatchRoomContent() {
             ...nextState,
             skipSupabase: Boolean(supabase),
           }),
-        }).catch(() => {});
+        }).catch(() => { });
       }
 
       if (!supabase) return;
@@ -539,26 +548,46 @@ function MatchRoomContent() {
 
   const seriesState = getSeriesState(match);
 
+  const fearlessChampionMap = React.useMemo(() => {
+    const map = new Map<string, ChampionInfo>();
+    for (const c of champions) {
+      map.set(c.id, c);
+    }
+    return map;
+  }, [champions]);
+
+  const fearlessList = React.useMemo(() => {
+    return seriesState.fearless_used_champions
+      .filter((id) => Boolean(id && id !== 'NO_BAN'))
+      .map((id) => ({
+        id,
+        info: fearlessChampionMap.get(id),
+      }));
+  }, [seriesState.fearless_used_champions, fearlessChampionMap]);
+
   // 다전제에서 세트별로 FIRST/SECOND 팀이 바뀌더라도,
   // 각 팀장이 처음 발급받은 본인 팀 전용 링크 하나로 자기 팀의 현재 세트 역할(FIRST 또는 SECOND)을 그대로 수행하도록 매핑
   const effectiveViewerRole: ViewerRole = React.useMemo(() => {
     if (viewerRole === 'OBSERVER') return 'OBSERVER';
-    if (
-      seriesState.team_a_name === seriesState.team_b_name ||
-      match.team_first_name === match.team_second_name
-    ) {
-      return viewerRole;
-    }
 
-    const myTeamName =
-      viewerRole === 'FIRST'
-        ? seriesState.team_a_name
-        : seriesState.team_b_name;
+    // 현재 세트의 FIRST 역할을 맡은 고유 팀 식별자 ('TEAM_A' | 'TEAM_B')
+    const currentFirstRole: 'TEAM_A' | 'TEAM_B' =
+      seriesState.game_first_roles?.[seriesState.current_game - 1] ??
+      (match.team_first_name === seriesState.team_b_name ? 'TEAM_B' : 'TEAM_A');
 
-    if (match.team_first_name === myTeamName) return 'FIRST';
-    if (match.team_second_name === myTeamName) return 'SECOND';
-    return viewerRole;
-  }, [viewerRole, seriesState.team_a_name, seriesState.team_b_name, match.team_first_name, match.team_second_name]);
+    // viewerRole이 'FIRST'인 사용자는 초기 1팀장 링크(?key=f1...)로 들어온 TEAM_A
+    // viewerRole이 'SECOND'인 사용자는 초기 2팀장 링크(?key=s2...)로 들어온 TEAM_B
+    const myRole: 'TEAM_A' | 'TEAM_B' =
+      viewerRole === 'FIRST' ? 'TEAM_A' : 'TEAM_B';
+
+    return myRole === currentFirstRole ? 'FIRST' : 'SECOND';
+  }, [
+    viewerRole,
+    seriesState.game_first_roles,
+    seriesState.current_game,
+    seriesState.team_b_name,
+    match.team_first_name,
+  ]);
 
   return (
     <div className="relative">
@@ -586,50 +615,101 @@ function MatchRoomContent() {
               }
             >
               {effectiveViewerRole === 'FIRST'
-                ? `🔒 이번 세트 FIRST 팀장 (${match.team_first_name})`
+                ? `🔒 이번 세트 FIRST 팀장 ${match.team_first_name}`
                 : effectiveViewerRole === 'SECOND'
-                  ? `🔒 이번 세트 SECOND 팀장 (${match.team_second_name})`
+                  ? `🔒 이번 세트 SECOND 팀장 ${match.team_second_name}`
                   : '👀 옵저버 / 관전 전용 (읽기 전용)'}
             </strong>
           </span>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {isScrimMatchRoom(match) ? (
-            <button
-              type="button"
-              onClick={() =>
-                handleDispatchBanPick({
-                  type: 'TOGGLE_FEARLESS',
-                  enabled: !seriesState.fearless_enabled,
-                })
-              }
-              className={`px-3 py-1 rounded font-bold border transition-colors ${
-                seriesState.fearless_enabled
-                  ? 'bg-rose-500/20 text-rose-300 border-rose-500/40 hover:bg-rose-500/30'
-                  : 'bg-slate-800/80 text-slate-400 border-slate-700 hover:bg-slate-700'
-              }`}
-              title="스크림 모드에서는 관리자 없이 하드 피어리스 ON/OFF를 전환할 수 있습니다"
-            >
-              🔥 하드 피어리스: {seriesState.fearless_enabled ? `ON (누적 금지 ${seriesState.fearless_used_champions.length}명)` : 'OFF'}
-            </button>
-          ) : (
-            <span
-              className={`px-3 py-1 rounded font-bold border ${
-                seriesState.fearless_enabled
-                  ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
-                  : 'bg-slate-800/80 text-slate-400 border-slate-700'
-              }`}
-            >
-              🔥 하드 피어리스: {seriesState.fearless_enabled ? `ON (누적 금지 ${seriesState.fearless_used_champions.length}명)` : 'OFF'}
-            </span>
-          )}
+          {/* 하드 피어리스 버튼/배너 + 호버 툴팁 */}
+          <div className="relative group/fearless">
+            {isScrimMatchRoom(match) ? (
+              <button
+                type="button"
+                onClick={() =>
+                  handleDispatchBanPick({
+                    type: 'TOGGLE_FEARLESS',
+                    enabled: !seriesState.fearless_enabled,
+                  })
+                }
+                className={`px-3 py-1 rounded font-bold border transition-colors ${seriesState.fearless_enabled
+                    ? 'bg-rose-500/20 text-rose-300 border-rose-500/40 hover:bg-rose-500/30'
+                    : 'bg-slate-800/80 text-slate-400 border-slate-700 hover:bg-slate-700'
+                  }`}
+                title="클릭 시 피어리스 ON/OFF 전환"
+              >
+                🔥 하드 피어리스: {seriesState.fearless_enabled ? `ON (${fearlessList.length}명 금지)` : 'OFF'}
+              </button>
+            ) : (
+              <span
+                className={`px-3 py-1 rounded font-bold border inline-block cursor-help ${seriesState.fearless_enabled
+                    ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                    : 'bg-slate-800/80 text-slate-400 border-slate-700'
+                  }`}
+                title="공식 경기에서는 관리자만 설정을 변경할 수 있습니다. 마우스를 올려 금지 목록을 확인하세요."
+              >
+                🔥 하드 피어리스: {seriesState.fearless_enabled ? `ON (${fearlessList.length}명 금지)` : 'OFF'}
+              </span>
+            )}
+
+            {/* 마우스 호버 시 피어리스 금지 챔피언 목록 팝업 */}
+            {seriesState.fearless_enabled && (
+              <div className="absolute right-0 top-full mt-2 hidden group-hover/fearless:block z-50 w-72 md:w-80 p-3 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl backdrop-blur-md">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-2 mb-2">
+                  <span className="text-xs font-bold text-rose-400 flex items-center gap-1">
+                    🔥 피어리스 금지 챔피언 목록
+                  </span>
+                  <span className="text-[11px] font-extrabold px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300">
+                    총 {fearlessList.length}명
+                  </span>
+                </div>
+
+                {fearlessList.length === 0 ? (
+                  <p className="text-xs text-slate-400 text-center py-3">
+                    이전 세트에서 선택된 챔피언이 없습니다. (2세트부터 누적)
+                  </p>
+                ) : (
+                  <div className="max-h-60 overflow-y-auto grid grid-cols-4 gap-2 pr-1">
+                    {fearlessList.map(({ id, info }) => (
+                      <div
+                        key={`fearless-popup-${id}`}
+                        className="flex flex-col items-center bg-slate-950/80 rounded-lg p-1.5 border border-slate-800"
+                        title={info?.name ?? id}
+                      >
+                        <div className="relative w-10 h-10 rounded overflow-hidden bg-slate-900 border border-slate-700">
+                          {info ? (
+                            <img
+                              src={info.imageUrl}
+                              alt={info.name}
+                              className="w-full h-full object-cover grayscale opacity-75"
+                            />
+                          ) : (
+                            <span className="text-[9px] text-slate-500 flex items-center justify-center h-full">
+                              {id.slice(0, 3)}
+                            </span>
+                          )}
+                          <div className="absolute inset-0 flex items-center justify-center bg-rose-950/30">
+                            <div className="w-full h-0.5 bg-rose-500/80 rotate-45" />
+                          </div>
+                        </div>
+                        <span className="text-[10px] font-bold text-slate-300 truncate w-full text-center mt-1">
+                          {info?.name ?? id}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
           <span
-            className={`px-3 py-1 rounded font-bold border ${
-              isMatchAutoSaveEnabled(match)
+            className={`px-3 py-1 rounded font-bold border ${isMatchAutoSaveEnabled(match)
                 ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
                 : 'bg-slate-800/80 text-slate-400 border-slate-700'
-            }`}
+              }`}
           >
             결과 자동 저장: {isMatchAutoSaveEnabled(match) ? 'ON' : 'OFF'}
           </span>
@@ -639,27 +719,27 @@ function MatchRoomContent() {
       {/* 1단계: RoFS 진영/픽 순서 결정 화면 */}
       {(match.status === 'ROFS_FIRST_PICK' ||
         match.status === 'ROFS_SECOND_PICK') && (
-        <RofsSelectionScreen
-          match={match}
-          viewerRole={effectiveViewerRole}
-          isSubmitting={isSubmitting}
-          errorMessage={errorMessage}
-          onConfirmAction={handleConfirmRofsAction}
-        />
-      )}
+          <RofsSelectionScreen
+            match={match}
+            viewerRole={effectiveViewerRole}
+            isSubmitting={isSubmitting}
+            errorMessage={errorMessage}
+            onConfirmAction={handleConfirmRofsAction}
+          />
+        )}
 
       {/* 2단계: RoFS 완료 후 5:5 토너먼트 드래프트 밴픽 화면 */}
       {(match.status === 'BANPICK_READY' ||
         match.status === 'BANPICK_IN_PROGRESS' ||
         match.status === 'COMPLETED') && (
-        <BanPickDraftScreen
-          match={match}
-          viewerRole={effectiveViewerRole}
-          isSubmitting={isSubmitting}
-          errorMessage={errorMessage}
-          onDispatchBanPick={handleDispatchBanPick}
-        />
-      )}
+          <BanPickDraftScreen
+            match={match}
+            viewerRole={effectiveViewerRole}
+            isSubmitting={isSubmitting}
+            errorMessage={errorMessage}
+            onDispatchBanPick={handleDispatchBanPick}
+          />
+        )}
     </div>
   );
 }

@@ -46,7 +46,9 @@ export interface SeriesState {
   fearless_used_champions: string[]; // 이전 세트들에서 픽된 누적 챔피언 ID 목록
   fearless_picks_by_team?: Record<string, string[]>; // 각 팀별 이전 세트들에서 선택한 누적 챔피언 ID 목록
   game_first_teams: string[];        // 각 세트별(인덱스 0 = 1세트) FIRST 권한을 가진 팀 기록
+  game_first_roles?: ('TEAM_A' | 'TEAM_B')[]; // 각 세트별 FIRST 권한을 가진 팀 고유 역할 기록 (팀명 중복 대응)
   set_winners?: string[];            // 각 세트별 승리 팀 기록 (패배팀이 다음 세트 FIRST가 됨)
+  set_winners_roles?: ('TEAM_A' | 'TEAM_B')[]; // 각 세트별 승리 팀 고유 역할 기록
   team_a_name: string;               // 1번 고정 링크(?key=f1...)를 발급받은 기준 팀 이름 (1세트 FIRST)
   team_b_name: string;               // 2번 고정 링크(?key=s2...)를 발급받은 기준 팀 이름 (1세트 SECOND)
   auto_save_enabled?: boolean;       // 밴픽 종료 시 자동 저장 ON/OFF (Supabase JSONB 동기화용)
@@ -201,6 +203,7 @@ export type BanPickAction =
   | {
       type: 'START_NEXT_GAME';
       nextFirstTeamName: string;
+      nextFirstRole?: 'TEAM_A' | 'TEAM_B';
       fearlessEnabled?: boolean;
     };
 

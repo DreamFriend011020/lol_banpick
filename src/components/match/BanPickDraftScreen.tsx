@@ -839,7 +839,7 @@ export default function BanPickDraftScreen({
                 : '—'}
           </div>
 
-          {canSwapThisSide ? (
+          {canSwapThisSide && (
             <div className="text-[11px] text-amber-300 font-semibold truncate">
               {isSwapSelected
                 ? '바꿀 다른 라인 카드를 클릭하세요'
@@ -847,12 +847,6 @@ export default function BanPickDraftScreen({
                   ? `클릭하여 [${POSITION_LABELS[selectedSwapSlot]}] ↔ [${POSITION_LABELS[slotIndex]}] 라인 교체`
                   : '클릭하여 라인 위치 변경'}
             </div>
-          ) : (
-            champ && (
-              <div className="text-xs text-slate-400 truncate">
-                {champ.title}
-              </div>
-            )
           )}
         </div>
       </div>
@@ -1286,9 +1280,6 @@ export default function BanPickDraftScreen({
                               <div className="text-sm font-extrabold text-white">
                                 {champ ? champ.name : '미선택'}
                               </div>
-                              <div className="text-[11px] text-slate-400">
-                                {champ?.title}
-                              </div>
                             </div>
                           </div>
 
@@ -1409,9 +1400,7 @@ export default function BanPickDraftScreen({
                         onChange={(e) => {
                           const val = e.target.value;
                           setSearchInput(val);
-                          if (!val.trim()) {
-                            setSearchQuery('');
-                          }
+                          setSearchQuery(val.trim());
                         }}
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') {

@@ -303,13 +303,7 @@ export async function renderBanPickResultToDataUrl(
 
     ctx.fillStyle = '#ffffff';
     ctx.font = 'bold 26px sans-serif';
-    ctx.fillText(bChamp ? bChamp.name : '미선택', bx + 108, y + 66);
-
-    if (bChamp) {
-      ctx.fillStyle = '#94a3b8';
-      ctx.font = '14px sans-serif';
-      ctx.fillText(bChamp.title, bx + 108, y + 87);
-    }
+    ctx.fillText(bChamp ? bChamp.name : '미선택', bx + 108, y + 70);
 
     // --- 우측: 레드 픽 슬롯 ---
     const rChampId = redPicks[i];
@@ -361,14 +355,8 @@ export async function renderBanPickResultToDataUrl(
     ctx.fillText(
       rChamp ? rChamp.name : '미선택',
       rx + cardWidth - 108,
-      y + 66
+      y + 70
     );
-
-    if (rChamp) {
-      ctx.fillStyle = '#94a3b8';
-      ctx.font = '14px sans-serif';
-      ctx.fillText(rChamp.title, rx + cardWidth - 108, y + 87);
-    }
   }
 
   // 4. 하드 피어리스(전 세트 픽) 섹션: 각 팀 하단에 해당 팀이 이전 세트에서 선택한 챔피언 렌더링

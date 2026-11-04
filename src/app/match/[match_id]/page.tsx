@@ -250,6 +250,40 @@ function MatchRoomContent() {
   const channelRef = useRef<RealtimeChannel | null>(null);
   const localBroadcastRef = useRef<BroadcastChannel | null>(null);
 
+  const seriesState = getSeriesState(match);
+  const [isAdminVerified, setIsAdminVerified] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const savedAuth =
+      window.sessionStorage.getItem('lol_banpick_admin_authenticated') ||
+      window.localStorage.getItem('lol_banpick_admin_authenticated');
+    const savedKey =
+      window.sessionStorage.getItem('lol_banpick_admin_key') ||
+      window.localStorage.getItem('lol_banpick_admin_key');
+    const savedMaster =
+      window.sessionStorage.getItem('lol_banpick_admin_is_master') ||
+      window.localStorage.getItem('lol_banpick_admin_is_master');
+
+    const adminQuery = searchParams?.get('admin') === '1';
+
+    if (savedAuth === 'true') {
+      if (
+        savedMaster === 'true' ||
+        !seriesState.admin_key ||
+        (savedKey && seriesState.admin_key && savedKey === seriesState.admin_key)
+      ) {
+        setIsAdminVerified(true);
+        return;
+      }
+    }
+    if (adminQuery && savedAuth === 'true') {
+      setIsAdminVerified(true);
+      return;
+    }
+    setIsAdminVerified(false);
+  }, [seriesState.admin_key, searchParams]);
+
   useEffect(() => {
     fetchLatestChampions()
       .then((res) => setChampions(res.champions))
@@ -546,8 +580,6 @@ function MatchRoomContent() {
     [match, broadcastAndPersistState]
   );
 
-  const seriesState = getSeriesState(match);
-
   const fearlessChampionMap = React.useMemo(() => {
     const map = new Map<string, ChampionInfo>();
     for (const c of champions) {
@@ -589,6 +621,8 @@ function MatchRoomContent() {
     match.team_first_name,
   ]);
 
+  const canToggleFearless = isScrimMatchRoom(match) || isAdminVerified;
+
   return (
     <div className="relative">
       {/* 상단 고정 상태 바 (전용 초대 링크로 부여된 권한만 표시, 임의 변경 불가) */}
@@ -611,14 +645,18 @@ function MatchRoomContent() {
                   ? 'text-amber-300'
                   : effectiveViewerRole === 'SECOND'
                     ? 'text-cyan-300'
-                    : 'text-slate-300'
+                    : isAdminVerified
+                      ? 'text-amber-400'
+                      : 'text-slate-300'
               }
             >
               {effectiveViewerRole === 'FIRST'
                 ? `🔒 이번 세트 FIRST 팀장 ${match.team_first_name}`
                 : effectiveViewerRole === 'SECOND'
                   ? `🔒 이번 세트 SECOND 팀장 ${match.team_second_name}`
-                  : '👀 옵저버 / 관전 전용 (읽기 전용)'}
+                  : isAdminVerified
+                    ? '👑 관리자 관전 (하드 피어리스 설정 가능)'
+                    : '👀 일반 옵저버 / 관전 전용 (읽기 전용)'}
             </strong>
           </span>
         </div>
@@ -626,13 +664,14 @@ function MatchRoomContent() {
         <div className="flex flex-wrap items-center gap-2">
           {/* 하드 피어리스 버튼/배너 + 호버 툴팁 */}
           <div className="relative group/fearless">
-            {isScrimMatchRoom(match) ? (
+            {canToggleFearless ? (
               <button
                 type="button"
                 onClick={() =>
                   handleDispatchBanPick({
                     type: 'TOGGLE_FEARLESS',
                     enabled: !seriesState.fearless_enabled,
+                    isAdmin: isAdminVerified,
                   })
                 }
                 className={`px-3 py-1 rounded font-bold border transition-colors ${seriesState.fearless_enabled
@@ -649,7 +688,7 @@ function MatchRoomContent() {
                     ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
                     : 'bg-slate-800/80 text-slate-400 border-slate-700'
                   }`}
-                title="공식 경기에서는 관리자만 설정을 변경할 수 있습니다. 마우스를 올려 금지 목록을 확인하세요."
+                title="공식 대회 경기에서는 관리자만 설정을 변경할 수 있습니다. (일반 옵저버는 변경 불가, 마우스를 올려 금지 목록 확인)"
               >
                 🔥 하드 피어리스: {seriesState.fearless_enabled ? `ON (${fearlessList.length}명 금지)` : 'OFF'}
               </span>
@@ -740,6 +779,8 @@ function MatchRoomContent() {
             isSubmitting={isSubmitting}
             errorMessage={errorMessage}
             onDispatchBanPick={handleDispatchBanPick}
+            isAdminVerified={isAdminVerified}
+            onAdminVerified={() => setIsAdminVerified(true)}
           />
         )}
     </div>

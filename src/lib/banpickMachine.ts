@@ -517,7 +517,7 @@ export function transitionBanPickState(
   // 0-1. 하드 피어리스(Hard Fearless) ON/OFF 토글 액션
   if (action.type === 'TOGGLE_FEARLESS') {
     const currentSeries = getSeriesState(state);
-    if (!currentSeries.is_scrim) {
+    if (!currentSeries.is_scrim && !action.isAdmin) {
       return {
         ok: false,
         error: '공식 대회 경기에서는 관리자만 하드 피어리스 룰을 변경할 수 있습니다.',

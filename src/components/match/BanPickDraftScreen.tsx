@@ -33,6 +33,8 @@ interface BanPickDraftScreenProps {
   isSubmitting?: boolean;
   errorMessage?: string | null;
   onDispatchBanPick: (action: BanPickAction) => Promise<void> | void;
+  isAdminVerified?: boolean;
+  onAdminVerified?: () => void;
 }
 
 const ROLE_FILTERS: { label: string; tag: string }[] = [
@@ -54,6 +56,8 @@ export default function BanPickDraftScreen({
   isSubmitting = false,
   errorMessage = null,
   onDispatchBanPick,
+  isAdminVerified: propIsAdminVerified,
+  onAdminVerified,
 }: BanPickDraftScreenProps) {
   const [champions, setChampions] = useState<ChampionInfo[]>([]);
   const [ddragonVersion, setDdragonVersion] = useState<string>('');
@@ -72,7 +76,8 @@ export default function BanPickDraftScreen({
   );
 
   // 관리자(운영진) 인증 여부 (실제 경기에서 관리자만 세트 승패를 결정하고 다음 세트를 시작하도록 제한)
-  const [isAdminVerified, setIsAdminVerified] = useState<boolean>(false);
+  const [internalAdminVerified, setInternalAdminVerified] = useState<boolean>(false);
+  const isAdminVerified = propIsAdminVerified ?? internalAdminVerified;
   const [showAdminUnlockInput, setShowAdminUnlockInput] =
     useState<boolean>(false);
   const [adminPasswordInput, setAdminPasswordInput] = useState<string>('');
@@ -85,21 +90,24 @@ export default function BanPickDraftScreen({
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const savedAuth = window.sessionStorage.getItem(
-        'lol_banpick_admin_authenticated'
-      );
-      const savedKey = window.sessionStorage.getItem('lol_banpick_admin_key');
-      const savedMaster = window.sessionStorage.getItem(
-        'lol_banpick_admin_is_master'
-      );
+      const savedAuth =
+        window.sessionStorage.getItem('lol_banpick_admin_authenticated') ||
+        window.localStorage.getItem('lol_banpick_admin_authenticated');
+      const savedKey =
+        window.sessionStorage.getItem('lol_banpick_admin_key') ||
+        window.localStorage.getItem('lol_banpick_admin_key');
+      const savedMaster =
+        window.sessionStorage.getItem('lol_banpick_admin_is_master') ||
+        window.localStorage.getItem('lol_banpick_admin_is_master');
       if (savedAuth === 'true') {
         if (
           savedMaster === 'true' ||
+          !seriesState.admin_key ||
           (savedKey && seriesState.admin_key && savedKey === seriesState.admin_key)
         ) {
-          setIsAdminVerified(true);
+          setInternalAdminVerified(true);
         } else {
-          setIsAdminVerified(false);
+          setInternalAdminVerified(false);
         }
       }
     }
@@ -125,8 +133,16 @@ export default function BanPickDraftScreen({
             'lol_banpick_admin_authenticated',
             'true'
           );
+          window.localStorage.setItem(
+            'lol_banpick_admin_authenticated',
+            'true'
+          );
           if (data.adminKey) {
             window.sessionStorage.setItem(
+              'lol_banpick_admin_key',
+              String(data.adminKey)
+            );
+            window.localStorage.setItem(
               'lol_banpick_admin_key',
               String(data.adminKey)
             );
@@ -135,8 +151,13 @@ export default function BanPickDraftScreen({
             'lol_banpick_admin_is_master',
             data.isMaster ? 'true' : 'false'
           );
+          window.localStorage.setItem(
+            'lol_banpick_admin_is_master',
+            data.isMaster ? 'true' : 'false'
+          );
         }
-        setIsAdminVerified(true);
+        setInternalAdminVerified(true);
+        onAdminVerified?.();
         setShowAdminUnlockInput(false);
         setAdminPasswordInput('');
       } else {
@@ -613,10 +634,10 @@ export default function BanPickDraftScreen({
   // 페이즈 한글 제목
   const renderPhaseTitle = () => {
     if (match.status === 'BANPICK_READY') {
-      return '밴픽 준비 완료 (BANPICK READY)';
+      return '밴픽 준비 완료';
     }
     if (match.status === 'COMPLETED') {
-      return '밴픽 및 라인 스왑 완료 (DRAFT COMPLETED)';
+      return '밴픽 및 라인 스왑 완료';
     }
     if (inSwapPhase) {
       return '최종 라인 스왑 페이즈 (60초)';

@@ -199,6 +199,7 @@ export type BanPickAction =
   | {
       type: 'TOGGLE_FEARLESS';
       enabled: boolean;
+      isAdmin?: boolean;
     }
   | {
       type: 'START_NEXT_GAME';

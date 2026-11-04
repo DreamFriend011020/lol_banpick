@@ -91,11 +91,15 @@ export default function AdminPage() {
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const savedAuth = window.sessionStorage.getItem(ADMIN_AUTH_STORAGE_KEY);
-      const savedKey = window.sessionStorage.getItem(ADMIN_KEY_STORAGE_KEY);
-      const savedMaster = window.sessionStorage.getItem(
-        ADMIN_MASTER_STORAGE_KEY
-      );
+      const savedAuth =
+        window.sessionStorage.getItem(ADMIN_AUTH_STORAGE_KEY) ||
+        window.localStorage.getItem(ADMIN_AUTH_STORAGE_KEY);
+      const savedKey =
+        window.sessionStorage.getItem(ADMIN_KEY_STORAGE_KEY) ||
+        window.localStorage.getItem(ADMIN_KEY_STORAGE_KEY);
+      const savedMaster =
+        window.sessionStorage.getItem(ADMIN_MASTER_STORAGE_KEY) ||
+        window.localStorage.getItem(ADMIN_MASTER_STORAGE_KEY);
       if (savedAuth === 'true' && savedKey) {
         setIsAuthenticated(true);
         setCurrentAdminKey(savedKey);
@@ -128,6 +132,12 @@ export default function AdminPage() {
           ADMIN_MASTER_STORAGE_KEY,
           resolvedMaster ? 'true' : 'false'
         );
+        window.localStorage.setItem(ADMIN_AUTH_STORAGE_KEY, 'true');
+        window.localStorage.setItem(ADMIN_KEY_STORAGE_KEY, resolvedKey);
+        window.localStorage.setItem(
+          ADMIN_MASTER_STORAGE_KEY,
+          resolvedMaster ? 'true' : 'false'
+        );
         setIsAuthenticated(true);
         setCurrentAdminKey(resolvedKey);
         setIsMasterAdmin(resolvedMaster);
@@ -150,6 +160,9 @@ export default function AdminPage() {
       window.sessionStorage.removeItem(ADMIN_AUTH_STORAGE_KEY);
       window.sessionStorage.removeItem(ADMIN_KEY_STORAGE_KEY);
       window.sessionStorage.removeItem(ADMIN_MASTER_STORAGE_KEY);
+      window.localStorage.removeItem(ADMIN_AUTH_STORAGE_KEY);
+      window.localStorage.removeItem(ADMIN_KEY_STORAGE_KEY);
+      window.localStorage.removeItem(ADMIN_MASTER_STORAGE_KEY);
     }
     setIsAuthenticated(false);
     setCurrentAdminKey('');
@@ -1277,7 +1290,7 @@ export default function AdminPage() {
                         </td>
                         <td className="py-3 px-3 text-right space-x-1.5 whitespace-nowrap">
                           <Link
-                            href={buildMatchRolePath(m.match_id, 'OBSERVER')}
+                            href={`${buildMatchRolePath(m.match_id, 'OBSERVER')}&admin=1`}
                             className="inline-block px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-extrabold"
                           >
                             관리자 관전 입장

@@ -56,6 +56,7 @@ export interface SeriesState {
   drive_webhook_url?: string;        // 지정 구글 드라이브 웹앱 URL
   is_scrim?: boolean;                // 스크림(연습) 방 여부 (true일 경우 관리자 없이도 다음 세트 및 피어리스 진행 가능)
   timer_unlimited?: boolean;         // 밴픽 시간 무제한 여부 (true일 경우 턴 제한 시간 없음)
+  created_at?: string;               // 경기 생성 시각 (ISO string)
   admin_key?: string;                // 공식 경기 생성 시 사용한 관리자 비밀번호 식별 키
 }
 

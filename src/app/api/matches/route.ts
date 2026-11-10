@@ -45,6 +45,8 @@ export async function GET() {
     if (!error && data) {
       const normalized = (data as MatchState[]).map((m) => ({
         ...m,
+        created_at:
+          m.created_at ?? m.rofs_submissions?.series_state?.created_at,
         auto_save_enabled: isMatchAutoSaveEnabled(m),
         timer_unlimited: isMatchTimerUnlimited(m),
         drive_folder_id:
@@ -114,6 +116,7 @@ export async function POST(req: NextRequest) {
         drive_folder_id: folderId,
         drive_webhook_url: webhookUrl,
         is_scrim: isScrim,
+        created_at: nowIso,
         admin_key: adminKey,
       };
 

@@ -31,6 +31,8 @@ export async function GET(
         ok: true,
         match: {
           ...m,
+          created_at:
+            m.created_at ?? m.rofs_submissions?.series_state?.created_at,
           auto_save_enabled: isMatchAutoSaveEnabled(m),
           timer_unlimited: isMatchTimerUnlimited(m),
           drive_folder_id:
@@ -111,10 +113,18 @@ export async function PATCH(
       rofs_submissions: baseRofs,
     });
 
+    const resolvedCreatedAt =
+      existing?.created_at ??
+      existing?.rofs_submissions?.series_state?.created_at ??
+      body.created_at ??
+      baseSeries.created_at ??
+      new Date().toISOString();
+
     const syncedSeries = {
       ...baseSeries,
       auto_save_enabled: resolvedAutoSave,
       timer_unlimited: resolvedTimerUnlimited,
+      created_at: resolvedCreatedAt,
       drive_folder_id: resolvedFolderId,
       drive_webhook_url: resolvedWebhookUrl,
     };
@@ -166,7 +176,7 @@ export async function PATCH(
       drive_folder_id: resolvedFolderId,
       drive_webhook_url: resolvedWebhookUrl,
       series_state: syncedSeries,
-      created_at: existing?.created_at ?? new Date().toISOString(),
+      created_at: resolvedCreatedAt,
     };
 
     await upsertMatchesToStore([updated]).catch(() => {});

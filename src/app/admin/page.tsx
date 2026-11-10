@@ -29,6 +29,43 @@ const ADMIN_AUTH_STORAGE_KEY = 'lol_banpick_admin_authenticated';
 const ADMIN_KEY_STORAGE_KEY = 'lol_banpick_admin_key';
 const ADMIN_MASTER_STORAGE_KEY = 'lol_banpick_admin_is_master';
 
+function formatMatchCreatedAt(isoString?: string): {
+  formatted: string;
+  relative: string;
+} {
+  if (!isoString) return { formatted: '-', relative: '-' };
+  try {
+    const d = new Date(isoString);
+    if (isNaN(d.getTime())) return { formatted: '-', relative: '-' };
+
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    const hh = String(d.getHours()).padStart(2, '0');
+    const min = String(d.getMinutes()).padStart(2, '0');
+    const ss = String(d.getSeconds()).padStart(2, '0');
+    const formatted = `${yyyy}-${mm}-${dd} ${hh}:${min}:${ss}`;
+
+    const diffMs = Math.max(0, Date.now() - d.getTime());
+    const diffSec = Math.floor(diffMs / 1000);
+    let relative = '';
+    if (diffSec < 60) {
+      relative = '방금 전';
+    } else if (diffSec < 3600) {
+      relative = `${Math.floor(diffSec / 60)}분 전`;
+    } else if (diffSec < 86400) {
+      relative = `${Math.floor(diffSec / 3600)}시간 전`;
+    } else {
+      const days = Math.floor(diffSec / 86400);
+      relative = `${days}일 전`;
+    }
+
+    return { formatted, relative };
+  } catch {
+    return { formatted: '-', relative: '-' };
+  }
+}
+
 export default function AdminPage() {
   // 관리자 암호 인증 상태
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
@@ -1168,6 +1205,7 @@ export default function AdminPage() {
                         title="현재 목록 전체 선택 / 해제"
                       />
                     </th>
+                    <th className="py-3 px-3 min-w-[135px]">생성 일시</th>
                     <th className="py-3 px-3">대회 / 라운드</th>
                     <th className="py-3 px-3">현재 세트 FIRST / SECOND</th>
                     <th className="py-3 px-3">다전제 / 피어리스 / 상태</th>
@@ -1202,6 +1240,26 @@ export default function AdminPage() {
                             onChange={() => handleToggleSelectMatch(m.match_id)}
                             className="w-4 h-4 rounded accent-amber-500 cursor-pointer"
                           />
+                        </td>
+                        <td className="py-3 px-3 whitespace-nowrap">
+                          {(() => {
+                            const createdAt =
+                              m.created_at ??
+                              m.rofs_submissions?.series_state?.created_at ??
+                              m.series_state?.created_at;
+                            const { formatted, relative } =
+                              formatMatchCreatedAt(createdAt);
+                            return (
+                              <div className="flex flex-col">
+                                <span className="text-xs font-bold text-slate-200">
+                                  {formatted}
+                                </span>
+                                <span className="text-[11px] text-amber-400 font-medium">
+                                  {relative}
+                                </span>
+                              </div>
+                            );
+                          })()}
                         </td>
                         <td className="py-3 px-3">
                           <div className="font-bold text-white">

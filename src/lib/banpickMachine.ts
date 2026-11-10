@@ -293,6 +293,7 @@ export function getSeriesState(match?: MatchState | null): SeriesState {
     drive_webhook_url: match?.drive_webhook_url ?? raw?.drive_webhook_url,
     is_scrim: resolvedIsScrim,
     timer_unlimited: resolvedTimerUnlimited,
+    created_at: match?.created_at ?? raw?.created_at,
     admin_key: raw?.admin_key,
   };
 }

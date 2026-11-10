@@ -47,15 +47,15 @@ export type PositionFilter = 'ALL' | ChampionPosition;
 
 const POSITION_FILTERS: { label: string; position: PositionFilter }[] = [
   { label: '전체', position: 'ALL' },
-  { label: '탑 (TOP)', position: 'TOP' },
-  { label: '정글 (JGL)', position: 'JGL' },
-  { label: '미드 (MID)', position: 'MID' },
-  { label: '바텀 (BOT)', position: 'BOT' },
-  { label: '서포터 (SUP)', position: 'SUP' },
+  { label: '탑', position: 'TOP' },
+  { label: '정글', position: 'JGL' },
+  { label: '미드', position: 'MID' },
+  { label: '바텀', position: 'BOT' },
+  { label: '서포터', position: 'SUP' },
 ];
 
 const POSITION_LABELS = ['TOP', 'JGL', 'MID', 'BOT', 'SUP'];
-const POSITION_KOR_NAMES = ['탑 (TOP)', '정글 (JGL)', '미드 (MID)', '원딜 (BOT)', '서포터 (SUP)'];
+const POSITION_KOR_NAMES = ['탑', '정글', '미드', '원딜', '서포터 '];
 
 export default function BanPickDraftScreen({
   match,
@@ -990,9 +990,9 @@ export default function BanPickDraftScreen({
   const timerProgressPercent = isUnlimited
     ? 100
     : Math.min(
-        100,
-        Math.max(0, (remainingSeconds / maxTimerDuration) * 100)
-      );
+      100,
+      Math.max(0, (remainingSeconds / maxTimerDuration) * 100)
+    );
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-start gap-2.5 p-2.5 md:p-4 select-none">
@@ -1553,11 +1553,10 @@ export default function BanPickDraftScreen({
                               : pos.position
                           )
                         }
-                        className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${
-                          selectedPosition === pos.position
+                        className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${selectedPosition === pos.position
                             ? 'bg-amber-500 text-slate-950 font-black shadow-md shadow-amber-500/20'
                             : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                        }`}
+                          }`}
                       >
                         {pos.label}
                       </button>

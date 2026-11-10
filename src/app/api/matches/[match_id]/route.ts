@@ -7,6 +7,7 @@ import {
 import {
   getSeriesState,
   isMatchAutoSaveEnabled,
+  isMatchTimerUnlimited,
 } from '../../../../lib/banpickMachine';
 import { supabase } from '../../../../lib/supabaseClient';
 import { MatchState } from '../../../../types/match';
@@ -31,6 +32,7 @@ export async function GET(
         match: {
           ...m,
           auto_save_enabled: isMatchAutoSaveEnabled(m),
+          timer_unlimited: isMatchTimerUnlimited(m),
           drive_folder_id:
             m.drive_folder_id ??
             m.rofs_submissions?.series_state?.drive_folder_id,
@@ -73,6 +75,16 @@ export async function PATCH(
             ? isMatchAutoSaveEnabled(existing)
             : false;
 
+    const resolvedTimerUnlimited =
+      typeof body.timer_unlimited === 'boolean'
+        ? body.timer_unlimited
+        : typeof body.rofs_submissions?.series_state?.timer_unlimited ===
+            'boolean'
+          ? body.rofs_submissions.series_state.timer_unlimited
+          : existing
+            ? isMatchTimerUnlimited(existing)
+            : false;
+
     const resolvedFolderId =
       body.drive_folder_id !== undefined
         ? body.drive_folder_id
@@ -102,6 +114,7 @@ export async function PATCH(
     const syncedSeries = {
       ...baseSeries,
       auto_save_enabled: resolvedAutoSave,
+      timer_unlimited: resolvedTimerUnlimited,
       drive_folder_id: resolvedFolderId,
       drive_webhook_url: resolvedWebhookUrl,
     };
@@ -149,6 +162,7 @@ export async function PATCH(
           ? body.banpick_state
           : existing?.banpick_state ?? null,
       auto_save_enabled: resolvedAutoSave,
+      timer_unlimited: resolvedTimerUnlimited,
       drive_folder_id: resolvedFolderId,
       drive_webhook_url: resolvedWebhookUrl,
       series_state: syncedSeries,

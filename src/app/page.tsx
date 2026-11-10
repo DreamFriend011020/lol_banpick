@@ -16,6 +16,7 @@ export default function HomePage() {
   const [scrimSecondTeam, setScrimSecondTeam] = useState('');
   const [scrimTotalGames, setScrimTotalGames] = useState<number>(3);
   const [scrimFearless, setScrimFearless] = useState<boolean>(true);
+  const [scrimTimerUnlimited, setScrimTimerUnlimited] = useState<boolean>(false);
   const [scrimAutoSave, setScrimAutoSave] = useState<boolean>(false);
   const [scrimDriveFolder, setScrimDriveFolder] = useState<string>('');
   const [isCreatingScrim, setIsCreatingScrim] = useState(false);
@@ -73,6 +74,7 @@ export default function HomePage() {
           team_second_name: second,
           total_games: scrimTotalGames,
           fearless_enabled: scrimFearless,
+          timer_unlimited: scrimTimerUnlimited,
           auto_save_enabled: scrimAutoSave,
           drive_folder_id: scrimDriveFolder.trim() || undefined,
           is_scrim: true,
@@ -121,9 +123,6 @@ export default function HomePage() {
           <h1 className="text-3xl font-black text-white pt-2">
             실시간 RoFS & 5:5 토너먼트 밴픽
           </h1>
-          <p className="text-sm text-slate-400">
-            자유 스크림 연습 방을 즉시 만들어 연습하거나, 대회 운영진에게 발급받은 Match ID로 입장하세요.
-          </p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch">
@@ -134,24 +133,13 @@ export default function HomePage() {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                  Scrim Mode (연습용)
+                  Scrim Mode
                 </span>
-                <span className="text-xs text-slate-400">암호 없이 즉시 생성</span>
               </div>
-
-              <div>
-                <h2 className="text-xl font-extrabold text-white">
-                  자유 스크림 방 즉시 생성
-                </h2>
-                {/* <p className="text-xs text-slate-400 mt-1">
-                  양 팀 이름을 입력하면 연습용 고유 링크가 즉시 발급됩니다. 링크를 상대 팀에게 공유해 바로 밴픽을 연습하세요.
-                </p> */}
-              </div>
-
               <form onSubmit={handleCreateScrimRoom} className="space-y-3">
                 <div>
                   <label className="block text-xs font-bold text-amber-400 mb-1">
-                    1세트 FIRST 팀 이름 (1세트 선결정권 팀)
+                    1세트 선결정권 팀
                   </label>
                   <input
                     type="text"
@@ -165,7 +153,7 @@ export default function HomePage() {
 
                 <div>
                   <label className="block text-xs font-bold text-cyan-400 mb-1">
-                    1세트 SECOND 팀 이름 (1세트 후결정권 팀)
+                    1세트 후결정권 팀
                   </label>
                   <input
                     type="text"
@@ -229,6 +217,37 @@ export default function HomePage() {
                     >
                       {scrimFearless ? '피어리스 ON' : '피어리스 OFF'}
                     </button>
+                  </div>
+
+                  {/* 밴픽 턴 시간 설정 (30초 기본 / 무제한 선택) */}
+                  <div className="flex items-center justify-between pt-2 border-t border-slate-800/80">
+                    <div>
+                      <div className="text-xs font-bold text-amber-300">
+                        ⏱️ 밴픽 시간 설정
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setScrimTimerUnlimited(false)}
+                        className={`px-2.5 py-1.5 rounded-lg text-xs font-extrabold transition-colors ${!scrimTimerUnlimited
+                          ? 'bg-amber-500 text-slate-950 font-black'
+                          : 'bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-700'
+                          }`}
+                      >
+                        30초
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setScrimTimerUnlimited(true)}
+                        className={`px-2.5 py-1.5 rounded-lg text-xs font-extrabold transition-colors ${scrimTimerUnlimited
+                          ? 'bg-amber-500 text-slate-950 font-black'
+                          : 'bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-700'
+                          }`}
+                      >
+                        무제한
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -402,18 +421,7 @@ export default function HomePage() {
                 <span className="text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
                   Join Room
                 </span>
-                <span className="text-xs text-slate-400">코드로 입장</span>
               </div>
-
-              <div>
-                <h2 className="text-xl font-extrabold text-white">
-                  Match ID로 경기 방 입장
-                </h2>
-                {/* <p className="text-xs text-slate-400 mt-1">
-                  운영진 또는 스크림 상대방에게 전달받은 Match ID를 입력해 입장합니다.
-                </p> */}
-              </div>
-
               <form onSubmit={handleEnterMatch} className="space-y-3">
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wider text-slate-400 mb-1.5">
@@ -433,7 +441,7 @@ export default function HomePage() {
                   type="submit"
                   className="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-sm transition-all shadow-lg shadow-amber-500/10"
                 >
-                  경기 방 입장하기
+                  경기 방 관전하기
                 </button>
               </form>
             </div>

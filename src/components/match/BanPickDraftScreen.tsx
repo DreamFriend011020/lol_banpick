@@ -15,6 +15,7 @@ import {
   getUnavailableChampionIds,
   isInSwapPhase,
   isMatchAutoSaveEnabled,
+  isMatchTimerUnlimited,
   isScrimMatchRoom,
   resolveFirstTeamSide,
   resolvePickOrderSides,
@@ -87,6 +88,7 @@ export default function BanPickDraftScreen({
   const bp = match.banpick_state;
   const seriesState = useMemo(() => getSeriesState(match), [match]);
   const isScrimRoom = useMemo(() => isScrimMatchRoom(match), [match]);
+  const isUnlimited = useMemo(() => isMatchTimerUnlimited(match), [match]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -256,13 +258,22 @@ export default function BanPickDraftScreen({
   const [nextGameFearless, setNextGameFearless] = useState<boolean>(
     seriesState.fearless_enabled
   );
+  const [nextGameTimerUnlimited, setNextGameTimerUnlimited] = useState<boolean>(
+    Boolean(seriesState.timer_unlimited)
+  );
 
   useEffect(() => {
     setNextFirstRole(defaultNextFirstRole);
     setNextGameFearless(seriesState.fearless_enabled);
+    setNextGameTimerUnlimited(Boolean(seriesState.timer_unlimited));
     autoSavedRef.current = false;
     swapTimeoutTriggeredRef.current = false;
-  }, [seriesState.current_game, defaultNextFirstRole, seriesState.fearless_enabled]);
+  }, [
+    seriesState.current_game,
+    defaultNextFirstRole,
+    seriesState.fearless_enabled,
+    seriesState.timer_unlimited,
+  ]);
 
   // 현재 접속자의 진영('BLUE' | 'RED' | null) 판별
   const viewerSide: SideChoice | null = useMemo(
@@ -298,6 +309,12 @@ export default function BanPickDraftScreen({
       return;
     }
 
+    if (isUnlimited) {
+      localDeadlineRef.current = null;
+      setRemainingSeconds(999);
+      return;
+    }
+
     const turnIdx = bp.current_turn_index;
     const maxSec = turnIdx >= 20 ? SWAP_DURATION_SECONDS : TURN_DURATION_SECONDS;
     const maxMs = maxSec * 1000;
@@ -313,7 +330,7 @@ export default function BanPickDraftScreen({
       deadlineAt: now + maxMs,
     };
     setRemainingSeconds(maxSec);
-  }, [match.status, bp?.current_turn_index]);
+  }, [match.status, bp?.current_turn_index, isUnlimited]);
 
   const isAutoSaveOn = isMatchAutoSaveEnabled(match);
 
@@ -415,6 +432,7 @@ export default function BanPickDraftScreen({
     unavailableIds,
     champions,
     onDispatchBanPick,
+    isUnlimited,
   });
 
   useEffect(() => {
@@ -427,6 +445,7 @@ export default function BanPickDraftScreen({
       unavailableIds,
       champions,
       onDispatchBanPick,
+      isUnlimited,
     };
   });
 
@@ -446,9 +465,15 @@ export default function BanPickDraftScreen({
         unavailableIds: unavail,
         champions: champList,
         onDispatchBanPick: dispatch,
+        isUnlimited: unlimited,
       } = latestTimerStateRef.current;
 
       if (!currentBp) return;
+
+      if (unlimited) {
+        setRemainingSeconds((prev) => (prev !== 999 ? 999 : prev));
+        return;
+      }
 
       if (localDeadlineRef.current?.turnIndex !== currentBp.current_turn_index) {
         const maxSec =
@@ -955,10 +980,12 @@ export default function BanPickDraftScreen({
     ? SWAP_DURATION_SECONDS
     : TURN_DURATION_SECONDS;
 
-  const timerProgressPercent = Math.min(
-    100,
-    Math.max(0, (remainingSeconds / maxTimerDuration) * 100)
-  );
+  const timerProgressPercent = isUnlimited
+    ? 100
+    : Math.min(
+        100,
+        Math.max(0, (remainingSeconds / maxTimerDuration) * 100)
+      );
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-start gap-2.5 p-2.5 md:p-4 select-none">
@@ -1064,14 +1091,25 @@ export default function BanPickDraftScreen({
                       </span>
                     )}
 
-                    <div
-                      className={`text-4xl font-black tabular-nums tracking-tight ${remainingSeconds <= 10
-                        ? 'text-rose-400 animate-pulse'
-                        : 'text-white'
-                        }`}
-                    >
-                      :{String(remainingSeconds).padStart(2, '0')}
-                    </div>
+                    {isUnlimited ? (
+                      <div className="flex items-center gap-2">
+                        <span className="text-4xl font-black text-amber-300">
+                          ∞
+                        </span>
+                        <span className="text-xs font-black px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                          시간 무제한
+                        </span>
+                      </div>
+                    ) : (
+                      <div
+                        className={`text-4xl font-black tabular-nums tracking-tight ${remainingSeconds <= 10
+                          ? 'text-rose-400 animate-pulse'
+                          : 'text-white'
+                          }`}
+                      >
+                        :{String(remainingSeconds).padStart(2, '0')}
+                      </div>
+                    )}
 
                     {currentStep.side === 'RED' && (
                       <span className="text-rose-400 font-black text-lg animate-pulse">
@@ -1097,11 +1135,13 @@ export default function BanPickDraftScreen({
 
                   <div className="w-full max-w-xs h-2 bg-slate-800 rounded-full overflow-hidden mt-2">
                     <div
-                      className={`h-full transition-all duration-200 ${remainingSeconds <= 10
-                        ? 'bg-rose-500'
-                        : currentStep.side === 'BLUE'
-                          ? 'bg-blue-500'
-                          : 'bg-rose-500'
+                      className={`h-full transition-all duration-200 ${isUnlimited
+                        ? 'bg-amber-400'
+                        : remainingSeconds <= 10
+                          ? 'bg-rose-500'
+                          : currentStep.side === 'BLUE'
+                            ? 'bg-blue-500'
+                            : 'bg-rose-500'
                         }`}
                       style={{ width: `${timerProgressPercent}%` }}
                     />
@@ -1116,16 +1156,27 @@ export default function BanPickDraftScreen({
                   <span className="text-amber-400 font-black text-sm uppercase tracking-wider animate-pulse">
                     ◀ LANE SWAP
                   </span>
-                  <div
-                    className={`text-4xl font-black tabular-nums tracking-tight ${remainingSeconds <= 10
-                      ? 'text-rose-400 animate-pulse'
-                      : 'text-amber-300'
-                      }`}
-                  >
-                    :{String(remainingSeconds).padStart(2, '0')}
-                  </div>
+                  {isUnlimited ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-4xl font-black text-amber-300">
+                        ∞
+                      </span>
+                      <span className="text-xs font-black px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                        시간 무제한
+                      </span>
+                    </div>
+                  ) : (
+                    <div
+                      className={`text-4xl font-black tabular-nums tracking-tight ${remainingSeconds <= 10
+                        ? 'text-rose-400 animate-pulse'
+                        : 'text-amber-300'
+                        }`}
+                    >
+                      :{String(remainingSeconds).padStart(2, '0')}
+                    </div>
+                  )}
                   <span className="text-amber-400 font-black text-sm uppercase tracking-wider animate-pulse">
-                    60s TIMER ▶
+                    {isUnlimited ? 'SWAP TIMER ▶' : '60s TIMER ▶'}
                   </span>
                 </div>
 
@@ -1152,7 +1203,11 @@ export default function BanPickDraftScreen({
 
                 <div className="w-full max-w-xs h-2 bg-slate-800 rounded-full overflow-hidden mt-2">
                   <div
-                    className={`h-full transition-all duration-200 ${remainingSeconds <= 10 ? 'bg-rose-500' : 'bg-amber-400'
+                    className={`h-full transition-all duration-200 ${isUnlimited
+                      ? 'bg-amber-400'
+                      : remainingSeconds <= 10
+                        ? 'bg-rose-500'
+                        : 'bg-amber-400'
                       }`}
                     style={{ width: `${timerProgressPercent}%` }}
                   />
@@ -1371,18 +1426,33 @@ export default function BanPickDraftScreen({
                     )}
                   </div>
 
-                  {viewerSide && (
-                    <button
-                      type="button"
-                      disabled={isMySwapReady || isSubmitting}
-                      onClick={handleReadySwapPhase}
-                      className="w-full sm:w-auto px-7 py-2.5 rounded-xl font-extrabold text-sm bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-lg shadow-emerald-500/20 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-                    >
-                      {isMySwapReady
-                        ? '라인 스왑 확정됨'
-                        : '라인 스왑 완료 (확정)'}
-                    </button>
-                  )}
+                  <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
+                    {canControlNextGame && (
+                      <button
+                        type="button"
+                        disabled={isSubmitting}
+                        onClick={() =>
+                          onDispatchBanPick({ type: 'FINISH_SWAP_PHASE' })
+                        }
+                        className="w-full sm:w-auto px-4 py-2.5 rounded-xl font-bold text-xs bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 transition-all disabled:opacity-40"
+                        title="라인 스왑을 즉시 종료하고 최종 밴픽 완료 단계로 전환합니다."
+                      >
+                        스왑 즉시 종료 (최종 완료)
+                      </button>
+                    )}
+                    {viewerSide && (
+                      <button
+                        type="button"
+                        disabled={isMySwapReady || isSubmitting}
+                        onClick={handleReadySwapPhase}
+                        className="w-full sm:w-auto px-7 py-2.5 rounded-xl font-extrabold text-sm bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-lg shadow-emerald-500/20 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        {isMySwapReady
+                          ? '라인 스왑 확정됨'
+                          : '라인 스왑 완료 (확정)'}
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             ) : (
@@ -1691,16 +1761,28 @@ export default function BanPickDraftScreen({
                         ? `🎮 [스크림 전용] ${seriesState.current_game}세트 승리팀 선택`
                         : `👑 [관리자 전용] ${seriesState.current_game}세트 승리팀 확정`}
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => setNextGameFearless((prev) => !prev)}
-                      className={`px-2.5 py-0.5 rounded text-[11px] font-extrabold border transition-colors ${nextGameFearless
-                        ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
-                        : 'bg-slate-800 text-slate-400 border-slate-700'
-                        }`}
-                    >
-                      🔥 하드 피어리스: {nextGameFearless ? 'ON' : 'OFF'}
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setNextGameTimerUnlimited((prev) => !prev)}
+                        className={`px-2.5 py-0.5 rounded text-[11px] font-extrabold border transition-colors ${nextGameTimerUnlimited
+                          ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                          : 'bg-slate-800 text-slate-400 border-slate-700'
+                          }`}
+                      >
+                        ⏱️ 시간: {nextGameTimerUnlimited ? '무제한 (∞)' : '30초'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setNextGameFearless((prev) => !prev)}
+                        className={`px-2.5 py-0.5 rounded text-[11px] font-extrabold border transition-colors ${nextGameFearless
+                          ? 'bg-rose-500/20 text-rose-300 border-rose-500/40'
+                          : 'bg-slate-800 text-slate-400 border-slate-700'
+                          }`}
+                      >
+                        🔥 하드 피어리스: {nextGameFearless ? 'ON' : 'OFF'}
+                      </button>
+                    </div>
                   </div>
 
                   {(() => {
@@ -1770,6 +1852,7 @@ export default function BanPickDraftScreen({
                                   : seriesState.team_b_name,
                               nextFirstRole,
                               fearlessEnabled: nextGameFearless,
+                              timerUnlimited: nextGameTimerUnlimited,
                             })
                           }
                           className="w-full py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-extrabold transition-all disabled:opacity-50"

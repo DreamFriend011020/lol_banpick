@@ -182,10 +182,13 @@ export const TOURNAMENT_DRAFT_SEQUENCE: DraftTurnStep[] = getDraftSequence(null)
 /**
  * 초기 밴픽 상태 생성
  */
-export function createInitialBanPickState(now: number = Date.now()): BanPickState {
+export function createInitialBanPickState(
+  now: number = Date.now(),
+  isUnlimited: boolean = false
+): BanPickState {
   return {
     current_turn_index: 0,
-    turn_deadline_at: now + TURN_DURATION_MS,
+    turn_deadline_at: isUnlimited ? 0 : now + TURN_DURATION_MS,
     hovered_champion_id: null,
     blue_bans: [null, null, null, null, null],
     red_bans: [null, null, null, null, null],
@@ -250,6 +253,13 @@ export function getSeriesState(match?: MatchState | null): SeriesState {
         match?.tournament_name?.includes('스크림')
       );
 
+  const resolvedTimerUnlimited =
+    typeof match?.timer_unlimited === 'boolean'
+      ? match.timer_unlimited
+      : typeof raw?.timer_unlimited === 'boolean'
+        ? raw.timer_unlimited
+        : false;
+
   return {
     total_games: totalGames,
     current_game: currentGame,
@@ -282,6 +292,7 @@ export function getSeriesState(match?: MatchState | null): SeriesState {
     drive_folder_id: match?.drive_folder_id ?? raw?.drive_folder_id,
     drive_webhook_url: match?.drive_webhook_url ?? raw?.drive_webhook_url,
     is_scrim: resolvedIsScrim,
+    timer_unlimited: resolvedTimerUnlimited,
     admin_key: raw?.admin_key,
   };
 }
@@ -309,6 +320,21 @@ export function isMatchAutoSaveEnabled(match?: MatchState | null): boolean {
   }
   if (typeof seriesAuto === 'boolean') {
     return seriesAuto;
+  }
+  return false;
+}
+
+/**
+ * 경기의 밴픽 시간 무제한(timer_unlimited)이 활성화되어 있는지 정확히 판별합니다.
+ */
+export function isMatchTimerUnlimited(match?: MatchState | null): boolean {
+  if (!match) return false;
+  if (typeof match.timer_unlimited === 'boolean') {
+    return match.timer_unlimited;
+  }
+  const series = match.rofs_submissions?.series_state ?? match.series_state;
+  if (typeof series?.timer_unlimited === 'boolean') {
+    return series.timer_unlimited;
   }
   return false;
 }
@@ -541,7 +567,35 @@ export function transitionBanPickState(
     };
   }
 
-  // 0-2. 다전제 다음 세트(Game N+1) 시작 및 FIRST/SECOND 배정 전환 액션
+  // 0-2. 밴픽 시간 무제한 ON/OFF 토글 액션
+  if (action.type === 'TOGGLE_TIMER_UNLIMITED') {
+    const currentSeries = getSeriesState(state);
+    if (!currentSeries.is_scrim && !action.isAdmin) {
+      return {
+        ok: false,
+        error: '공식 대회 경기에서는 관리자만 밴픽 시간 설정을 변경할 수 있습니다.',
+      };
+    }
+    const updatedSeries: SeriesState = {
+      ...currentSeries,
+      timer_unlimited: action.enabled,
+    };
+    return {
+      ok: true,
+      state: {
+        ...state,
+        timer_unlimited: action.enabled,
+        series_state: updatedSeries,
+        rofs_submissions: {
+          first_choice: state.rofs_submissions?.first_choice ?? null,
+          second_choice: state.rofs_submissions?.second_choice ?? null,
+          series_state: updatedSeries,
+        },
+      },
+    };
+  }
+
+  // 0-3. 다전제 다음 세트(Game N+1) 시작 및 FIRST/SECOND 배정 전환 액션
   if (action.type === 'START_NEXT_GAME') {
     const currentSeries = getSeriesState(state);
     const prevBlueTeam = state.selected_side?.blue ?? state.team_first_name;
@@ -651,6 +705,10 @@ export function transitionBanPickState(
         action.fearlessEnabled !== undefined
           ? action.fearlessEnabled
           : currentSeries.fearless_enabled,
+      timer_unlimited:
+        action.timerUnlimited !== undefined
+          ? action.timerUnlimited
+          : currentSeries.timer_unlimited,
       fearless_used_champions: accumulatedFearless,
       fearless_picks_by_team: updatedTeamPicks,
       game_first_teams: nextSchedule,
@@ -669,6 +727,7 @@ export function transitionBanPickState(
         selected_side: null,
         pick_turn: null,
         banpick_state: null,
+        timer_unlimited: updatedSeries.timer_unlimited,
         series_state: updatedSeries,
         rofs_submissions: {
           first_choice: null,
@@ -696,12 +755,13 @@ export function transitionBanPickState(
     }
 
     const now = action.now ?? Date.now();
+    const isUnlimited = isMatchTimerUnlimited(state);
     return {
       ok: true,
       state: {
         ...state,
         status: 'BANPICK_IN_PROGRESS',
-        banpick_state: createInitialBanPickState(now),
+        banpick_state: createInitialBanPickState(now, isUnlimited),
       },
     };
   }
@@ -871,6 +931,13 @@ export function transitionBanPickState(
 
   // 챔피언 선택 완료(Lock-in) 및 타이머 종료(Timeout) 처리
   if (action.type === 'LOCK_IN' || action.type === 'TIMEOUT_TURN') {
+    if (action.type === 'TIMEOUT_TURN' && isMatchTimerUnlimited(state)) {
+      return {
+        ok: false,
+        error: '시간 무제한 방에서는 시간 초과가 발생하지 않습니다.',
+      };
+    }
+
     if (
       action.type === 'TIMEOUT_TURN' &&
       typeof action.expectedTurnIndex === 'number' &&
@@ -935,6 +1002,7 @@ export function transitionBanPickState(
     const nextTurnIndex = bp.current_turn_index + 1;
     const isEnteringSwapPhase = nextTurnIndex >= sequence.length;
     const now = action.now ?? Date.now();
+    const isUnlimited = isMatchTimerUnlimited(state);
 
     return {
       ok: true,
@@ -944,9 +1012,11 @@ export function transitionBanPickState(
         status: 'BANPICK_IN_PROGRESS',
         banpick_state: {
           current_turn_index: nextTurnIndex,
-          turn_deadline_at: isEnteringSwapPhase
-            ? now + SWAP_DURATION_MS
-            : now + TURN_DURATION_MS,
+          turn_deadline_at: isUnlimited
+            ? 0
+            : isEnteringSwapPhase
+              ? now + SWAP_DURATION_MS
+              : now + TURN_DURATION_MS,
           hovered_champion_id: null,
           blue_bans: nextBlueBans,
           red_bans: nextRedBans,

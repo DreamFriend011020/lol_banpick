@@ -4,7 +4,10 @@ import {
   getAllMatchesFromStore,
   upsertMatchesToStore,
 } from '../../../lib/matchStoreServer';
-import { isMatchAutoSaveEnabled } from '../../../lib/banpickMachine';
+import {
+  isMatchAutoSaveEnabled,
+  isMatchTimerUnlimited,
+} from '../../../lib/banpickMachine';
 import { supabase } from '../../../lib/supabaseClient';
 import { MatchState, SeriesState } from '../../../types/match';
 
@@ -15,6 +18,7 @@ interface CreateMatchInput {
   team_first_name: string;
   team_second_name: string;
   auto_save_enabled?: boolean;
+  timer_unlimited?: boolean;
   drive_folder_id?: string;
   drive_webhook_url?: string;
   total_games?: number;
@@ -42,6 +46,7 @@ export async function GET() {
       const normalized = (data as MatchState[]).map((m) => ({
         ...m,
         auto_save_enabled: isMatchAutoSaveEnabled(m),
+        timer_unlimited: isMatchTimerUnlimited(m),
         drive_folder_id:
           m.drive_folder_id ?? m.rofs_submissions?.series_state?.drive_folder_id,
         drive_webhook_url:
@@ -87,6 +92,7 @@ export async function POST(req: NextRequest) {
       const game1First = schedule[0] === second ? second : first;
       const game1Second = game1First === first ? second : first;
       const autoSaveOn = Boolean(item.auto_save_enabled);
+      const timerUnlimited = Boolean(item.timer_unlimited);
       const folderId = item.drive_folder_id?.trim() || undefined;
       const webhookUrl = item.drive_webhook_url?.trim() || undefined;
       const isScrim =
@@ -104,6 +110,7 @@ export async function POST(req: NextRequest) {
         team_a_name: first,
         team_b_name: second,
         auto_save_enabled: autoSaveOn,
+        timer_unlimited: timerUnlimited,
         drive_folder_id: folderId,
         drive_webhook_url: webhookUrl,
         is_scrim: isScrim,
@@ -126,6 +133,7 @@ export async function POST(req: NextRequest) {
         },
         banpick_state: null,
         auto_save_enabled: autoSaveOn,
+        timer_unlimited: timerUnlimited,
         drive_folder_id: folderId,
         drive_webhook_url: webhookUrl,
         series_state: initialSeries,

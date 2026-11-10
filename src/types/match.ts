@@ -55,6 +55,7 @@ export interface SeriesState {
   drive_folder_id?: string;          // 지정 구글 드라이브 폴더 ID/링크
   drive_webhook_url?: string;        // 지정 구글 드라이브 웹앱 URL
   is_scrim?: boolean;                // 스크림(연습) 방 여부 (true일 경우 관리자 없이도 다음 세트 및 피어리스 진행 가능)
+  timer_unlimited?: boolean;         // 밴픽 시간 무제한 여부 (true일 경우 턴 제한 시간 없음)
   admin_key?: string;                // 공식 경기 생성 시 사용한 관리자 비밀번호 식별 키
 }
 
@@ -131,6 +132,7 @@ export interface MatchState {
   rofs_submissions?: RofsSubmissions | null;
   banpick_state?: BanPickState | null;
   auto_save_enabled?: boolean;  // 밴픽 종료 시 자동 저장 활성화 여부
+  timer_unlimited?: boolean;    // 밴픽 시간 무제한 활성화 여부
   drive_folder_id?: string;     // 이 경기를 저장할 특정 구글 드라이브 폴더 링크 또는 ID (미지정 시 기본 폴더)
   drive_webhook_url?: string;   // 다른 구글 계정의 드라이브 웹앱 URL (선택)
   series_state?: SeriesState;   // 다전제 및 하드 피어리스 상태
@@ -202,10 +204,16 @@ export type BanPickAction =
       isAdmin?: boolean;
     }
   | {
+      type: 'TOGGLE_TIMER_UNLIMITED';
+      enabled: boolean;
+      isAdmin?: boolean;
+    }
+  | {
       type: 'START_NEXT_GAME';
       nextFirstTeamName: string;
       nextFirstRole?: 'TEAM_A' | 'TEAM_B';
       fearlessEnabled?: boolean;
+      timerUnlimited?: boolean;
     };
 
 /**

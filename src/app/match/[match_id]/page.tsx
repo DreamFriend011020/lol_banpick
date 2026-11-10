@@ -9,6 +9,7 @@ import { resolveFinalRofsResult, transitionRofsState } from '../../../lib/rofsMa
 import {
   getSeriesState,
   isMatchAutoSaveEnabled,
+  isMatchTimerUnlimited,
   isScrimMatchRoom,
   transitionBanPickState,
 } from '../../../lib/banpickMachine';
@@ -622,6 +623,7 @@ function MatchRoomContent() {
   ]);
 
   const canToggleFearless = isScrimMatchRoom(match) || isAdminVerified;
+  const isTimerUnlimited = isMatchTimerUnlimited(match);
 
   return (
     <div className="relative">
@@ -662,6 +664,38 @@ function MatchRoomContent() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {/* 밴픽 시간 설정 버튼/배너 */}
+          {canToggleFearless ? (
+            <button
+              type="button"
+              onClick={() =>
+                handleDispatchBanPick({
+                  type: 'TOGGLE_TIMER_UNLIMITED',
+                  enabled: !isTimerUnlimited,
+                  isAdmin: isAdminVerified,
+                })
+              }
+              className={`px-3 py-1 rounded font-bold border transition-colors ${
+                isTimerUnlimited
+                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30'
+                  : 'bg-slate-800/80 text-slate-400 border-slate-700 hover:bg-slate-700'
+              }`}
+              title="클릭 시 밴픽 시간 30초 / 무제한 전환"
+            >
+              ⏱️ 밴픽 시간: {isTimerUnlimited ? '무제한 (∞)' : '30초'}
+            </button>
+          ) : (
+            <span
+              className={`px-3 py-1 rounded font-bold border inline-block ${
+                isTimerUnlimited
+                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                  : 'bg-slate-800/80 text-slate-400 border-slate-700'
+              }`}
+            >
+              ⏱️ 밴픽 시간: {isTimerUnlimited ? '무제한 (∞)' : '30초'}
+            </span>
+          )}
+
           {/* 하드 피어리스 버튼/배너 + 호버 툴팁 */}
           <div className="relative group/fearless">
             {canToggleFearless ? (

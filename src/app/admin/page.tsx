@@ -7,6 +7,7 @@ import { buildMatchRolePath, InviteRole } from '../../lib/roleToken';
 import {
   getSeriesState,
   isMatchAutoSaveEnabled,
+  isMatchTimerUnlimited,
   isScrimMatchRoom,
   transitionBanPickState,
 } from '../../lib/banpickMachine';
@@ -59,6 +60,7 @@ export default function AdminPage() {
   const [customMatchId, setCustomMatchId] = useState('');
   const [totalGames, setTotalGames] = useState<number>(3);
   const [fearlessEnabled, setFearlessEnabled] = useState<boolean>(true);
+  const [timerUnlimited, setTimerUnlimited] = useState<boolean>(false);
   const [autoSaveEnabled, setAutoSaveEnabled] = useState<boolean>(true);
   const [driveFolderId, setDriveFolderId] = useState<string>('');
   const [driveWebhookUrl, setDriveWebhookUrl] = useState<string>('');
@@ -204,6 +206,7 @@ export default function AdminPage() {
           match_id: customMatchId.trim() || undefined,
           total_games: totalGames,
           fearless_enabled: fearlessEnabled,
+          timer_unlimited: timerUnlimited,
           auto_save_enabled: autoSaveEnabled,
           drive_folder_id: driveFolderId.trim() || undefined,
           drive_webhook_url: driveWebhookUrl.trim() || undefined,
@@ -499,6 +502,18 @@ export default function AdminPage() {
     const res = transitionBanPickState(m, {
       type: 'TOGGLE_FEARLESS',
       enabled: !series.fearless_enabled,
+    });
+    if (res.ok) {
+      await syncAdminMatchUpdate(res.state);
+    }
+  };
+
+  const handleToggleMatchTimer = async (m: MatchState) => {
+    const isUnlimited = isMatchTimerUnlimited(m);
+    const res = transitionBanPickState(m, {
+      type: 'TOGGLE_TIMER_UNLIMITED',
+      enabled: !isUnlimited,
+      isAdmin: true,
     });
     if (res.ok) {
       await syncAdminMatchUpdate(res.state);
@@ -867,6 +882,44 @@ export default function AdminPage() {
                     {fearlessEnabled ? '피어리스 ON' : '피어리스 OFF'}
                   </button>
                 </div>
+
+                {/* 밴픽 턴 시간 설정 */}
+                <div className="flex items-center justify-between pt-2 border-t border-slate-800/80">
+                  <div>
+                    <div className="text-xs font-bold text-amber-300">
+                      ⏱️ 밴픽 시간 설정
+                    </div>
+                    <div className="text-[11px] text-slate-400">
+                      {timerUnlimited
+                        ? '무제한: 시간 제한 없이 자유롭게 상의 후 선택합니다.'
+                        : '30초 (기본): 각 턴마다 30초 카운트다운 타이머가 적용됩니다.'}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setTimerUnlimited(false)}
+                      className={`px-2.5 py-1.5 rounded-lg text-xs font-extrabold transition-colors ${
+                        !timerUnlimited
+                          ? 'bg-amber-500 text-slate-950 font-black'
+                          : 'bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-700'
+                      }`}
+                    >
+                      30초 (기본)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTimerUnlimited(true)}
+                      className={`px-2.5 py-1.5 rounded-lg text-xs font-extrabold transition-colors ${
+                        timerUnlimited
+                          ? 'bg-amber-500 text-slate-950 font-black'
+                          : 'bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-700'
+                      }`}
+                    >
+                      무제한 (∞)
+                    </button>
+                  </div>
+                </div>
               </div>
 
               {/* 밴픽 종료 시 자동 저장 ON/OFF 토글 및 저장할 드라이브 폴더 지정 */}
@@ -1187,6 +1240,18 @@ export default function AdminPage() {
                               }`}
                             >
                               🔥 피어리스 {series.fearless_enabled ? 'ON' : 'OFF'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleToggleMatchTimer(m)}
+                              className={`text-[11px] px-2 py-0.5 rounded font-extrabold border transition-colors ${
+                                isMatchTimerUnlimited(m)
+                                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30'
+                                  : 'bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-700'
+                              }`}
+                              title="클릭 시 밴픽 시간 30초 / 무제한 전환"
+                            >
+                              ⏱️ {isMatchTimerUnlimited(m) ? '무제한 (∞)' : '30초'}
                             </button>
                           </div>
                           <div>

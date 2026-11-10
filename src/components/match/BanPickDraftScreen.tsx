@@ -24,7 +24,12 @@ import {
   TOURNAMENT_DRAFT_SEQUENCE,
   TURN_DURATION_SECONDS,
 } from '../../lib/banpickMachine';
-import { fetchLatestChampions, matchesChampionSearch } from '../../lib/ddragon';
+import {
+  ChampionPosition,
+  fetchLatestChampions,
+  getChampionPositions,
+  matchesChampionSearch,
+} from '../../lib/ddragon';
 import { saveBanPickScreenForStaff } from '../../lib/exportBanPickImage';
 import { ViewerRole } from './RofsSelectionScreen';
 
@@ -38,14 +43,15 @@ interface BanPickDraftScreenProps {
   onAdminVerified?: () => void;
 }
 
-const ROLE_FILTERS: { label: string; tag: string }[] = [
-  { label: '전체', tag: 'ALL' },
-  { label: '전사', tag: 'Fighter' },
-  { label: '마법사', tag: 'Mage' },
-  { label: '암살자', tag: 'Assassin' },
-  { label: '원거리 딜러', tag: 'Marksman' },
-  { label: '탱커', tag: 'Tank' },
-  { label: '서포터', tag: 'Support' },
+export type PositionFilter = 'ALL' | ChampionPosition;
+
+const POSITION_FILTERS: { label: string; position: PositionFilter }[] = [
+  { label: '전체', position: 'ALL' },
+  { label: '탑 (TOP)', position: 'TOP' },
+  { label: '정글 (JGL)', position: 'JGL' },
+  { label: '미드 (MID)', position: 'MID' },
+  { label: '바텀 (BOT)', position: 'BOT' },
+  { label: '서포터 (SUP)', position: 'SUP' },
 ];
 
 const POSITION_LABELS = ['TOP', 'JGL', 'MID', 'BOT', 'SUP'];
@@ -65,7 +71,7 @@ export default function BanPickDraftScreen({
   const [isLoadingChamps, setIsLoadingChamps] = useState<boolean>(true);
   const [searchInput, setSearchInput] = useState<string>('');
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [selectedTag, setSelectedTag] = useState<string>('ALL');
+  const [selectedPosition, setSelectedPosition] = useState<PositionFilter>('ALL');
   const [remainingSeconds, setRemainingSeconds] = useState<number>(
     TURN_DURATION_SECONDS
   );
@@ -544,15 +550,16 @@ export default function BanPickDraftScreen({
     return () => window.clearInterval(intervalId);
   }, [match.status]);
 
-  // 4. 검색창(한글명/영문명/띄어쓰기 무시/초성/약어) 및 역할군 필터링
+  // 4. 검색창(한글명/영문명/띄어쓰기 무시/초성/약어) 및 포지션 필터링
   const filteredChampions = useMemo(() => {
     return champions.filter((champ) => {
-      const matchesTag =
-        selectedTag === 'ALL' || champ.tags.includes(selectedTag);
-      if (!matchesTag) return false;
+      const matchesPosition =
+        selectedPosition === 'ALL' ||
+        getChampionPositions(champ).includes(selectedPosition);
+      if (!matchesPosition) return false;
       return matchesChampionSearch(champ, searchQuery);
     });
-  }, [champions, searchQuery, selectedTag]);
+  }, [champions, searchQuery, selectedPosition]);
 
   // 챔피언 클릭(프리뷰 Hover) 핸들러
   const handleSelectChampion = (championId: string) => {
@@ -1393,41 +1400,46 @@ export default function BanPickDraftScreen({
                     <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-3 text-slate-300">
                       <span className="w-7 h-7 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
                       <p className="text-base font-bold text-white">
-                        양 팀이 60초 동안 챔피언의 라인(TOP/JGL/MID/BOT/SUP)을 배치하고 있습니다.
+                        양 팀이 챔피언의 라인(TOP/JGL/MID/BOT/SUP)을 배치하고 있습니다.
                       </p>
                       <p className="text-xs text-slate-400">
-                        60초 타이머가 종료되거나 양 팀이 모두 [라인 스왑 완료]를 누르면 최종 결과가 확정되고 운영진 화면에 자동 저장됩니다.
+                        {isUnlimited
+                          ? '양 팀이 모두 [라인 스왑 종료]를 누르거나 관리자가 즉시 종료하면 최종 결과가 확정됩니다.'
+                          : '60초 타이머가 종료되거나 양 팀이 모두 [라인 스왑 종료]를 누르면 최종 결과가 확정되고 운영진 화면에 자동 저장됩니다.'}
                       </p>
                     </div>
                   )}
                 </div>
 
-                {/* 라인 스왑 하단 완료 버튼 */}
+                {/* 라인 스왑 하단 완료/종료 컨트롤 바 */}
                 <div className="pt-3 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3">
                   <div className="text-xs text-slate-300">
-                    {viewerSide ? (
+                    {viewerSide && (viewerRole === 'FIRST' || viewerRole === 'SECOND') ? (
                       isMySwapReady ? (
                         <span className="text-emerald-400 font-bold">
-                          ✓ 우리 팀({viewerSide}) 라인 스왑 완료! 상대 팀 완료 또는 타이머 종료 시 최종 확정됩니다.
+                          ✓ 우리 팀({viewerSide === 'BLUE' ? '블루' : '레드'}) 라인 스왑 완료! 상대 팀 완료{isUnlimited ? '' : ' 또는 타이머 종료'} 시 최종 확정됩니다.
                         </span>
                       ) : (
                         <span>
                           라인 배치를 마쳤다면 우측{' '}
                           <strong className="text-amber-300">
-                            [라인 스왑 완료 (확정)]
+                            [라인 스왑 종료 (확정)]
                           </strong>{' '}
                           버튼을 눌러주세요.
                         </span>
                       )
                     ) : (
                       <span className="text-slate-400">
-                        관전 모드 — 양 팀의 실시간 라인 스왑이 좌/우 슬롯에 즉시 표시됩니다.
+                        {canControlNextGame
+                          ? '관리자 관전 모드 — 양 팀 스왑 완료를 기다리거나, 필요 시 [스왑 즉시 종료]를 누를 수 있습니다.'
+                          : '관전 모드 — 양 팀의 실시간 라인 스왑 배치가 좌/우 슬롯에 실시간으로 표시됩니다.'}
                       </span>
                     )}
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
-                    {canControlNextGame && (
+                    {/* 관리자 관전 전용: 스왑 즉시 종료 (팀장에게는 절대 노출되지 않음) */}
+                    {viewerRole === 'OBSERVER' && canControlNextGame && (
                       <button
                         type="button"
                         disabled={isSubmitting}
@@ -1435,12 +1447,14 @@ export default function BanPickDraftScreen({
                           onDispatchBanPick({ type: 'FINISH_SWAP_PHASE' })
                         }
                         className="w-full sm:w-auto px-4 py-2.5 rounded-xl font-bold text-xs bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 transition-all disabled:opacity-40"
-                        title="라인 스왑을 즉시 종료하고 최종 밴픽 완료 단계로 전환합니다."
+                        title="관리자 권한으로 라인 스왑을 즉시 강제 종료하고 최종 밴픽 완료 단계로 전환합니다."
                       >
                         스왑 즉시 종료 (최종 완료)
                       </button>
                     )}
-                    {viewerSide && (
+
+                    {/* 각 팀 팀장 전용: 라인 스왑 종료 (관리자/옵저버에게는 절대 노출되지 않음) */}
+                    {(viewerRole === 'FIRST' || viewerRole === 'SECOND') && viewerSide && (
                       <button
                         type="button"
                         disabled={isMySwapReady || isSubmitting}
@@ -1448,8 +1462,8 @@ export default function BanPickDraftScreen({
                         className="w-full sm:w-auto px-7 py-2.5 rounded-xl font-extrabold text-sm bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-lg shadow-emerald-500/20 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                       >
                         {isMySwapReady
-                          ? '라인 스왑 확정됨'
-                          : '라인 스왑 완료 (확정)'}
+                          ? '라인 스왑 완료됨 (대기 중)'
+                          : '라인 스왑 종료 (확정)'}
                       </button>
                     )}
                   </div>
@@ -1526,25 +1540,26 @@ export default function BanPickDraftScreen({
                     )}
                   </div>
 
-                  {/* 역할군 필터 탭 (이미 선택된 카테고리를 다시 클릭하면 'ALL'로 복귀) */}
+                  {/* 포지션 필터 탭 (이미 선택된 포지션을 다시 클릭하면 'ALL'로 복귀) */}
                   <div className="flex flex-wrap gap-1.5">
-                    {ROLE_FILTERS.map((role) => (
+                    {POSITION_FILTERS.map((pos) => (
                       <button
-                        key={role.tag}
+                        key={pos.position}
                         type="button"
                         onClick={() =>
-                          setSelectedTag((prev) =>
-                            prev === role.tag && role.tag !== 'ALL'
+                          setSelectedPosition((prev) =>
+                            prev === pos.position && pos.position !== 'ALL'
                               ? 'ALL'
-                              : role.tag
+                              : pos.position
                           )
                         }
-                        className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors ${selectedTag === role.tag
-                          ? 'bg-amber-500 text-slate-950'
-                          : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                          }`}
+                        className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${
+                          selectedPosition === pos.position
+                            ? 'bg-amber-500 text-slate-950 font-black shadow-md shadow-amber-500/20'
+                            : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                        }`}
                       >
-                        {role.label}
+                        {pos.label}
                       </button>
                     ))}
                   </div>

@@ -300,3 +300,240 @@ export async function fetchLatestChampions(): Promise<{
   }
 }
 
+export type ChampionPosition = 'TOP' | 'JGL' | 'MID' | 'BOT' | 'SUP';
+
+/**
+ * LoL 공식 메타 및 소환사의 협곡 주 포지션 매핑 (영문 ID 기준)
+ * 다중 라인을 서는 챔피언은 여러 포지션에 포함되어 검색 및 밴픽 편의성을 극대화합니다.
+ */
+export const CHAMPION_POSITIONS: Record<string, ChampionPosition[]> = {
+  // ㄱ
+  Garen: ['TOP'],
+  Galio: ['MID', 'SUP'],
+  Gangplank: ['TOP', 'MID'],
+  Gragas: ['TOP', 'JGL', 'MID', 'SUP'],
+  Graves: ['JGL'],
+  Gwen: ['TOP', 'JGL'],
+  Gnar: ['TOP'],
+
+  // ㄴ
+  Nami: ['SUP'],
+  Nasus: ['TOP'],
+  Naafiri: ['MID', 'TOP'],
+  Nautilus: ['SUP', 'JGL'],
+  Nocturne: ['JGL'],
+  Nunu: ['JGL'],
+  Nidalee: ['JGL'],
+  Neeko: ['MID', 'SUP'],
+  Nilah: ['BOT'],
+
+  // ㄷ
+  Darius: ['TOP'],
+  Diana: ['JGL', 'MID'],
+  Draven: ['BOT'],
+  Ryze: ['MID', 'TOP'],
+  Rakan: ['SUP'],
+  Rammus: ['JGL'],
+  Lux: ['SUP', 'MID'],
+  Rumble: ['TOP', 'MID', 'JGL'],
+  Renata: ['SUP'],
+  Renekton: ['TOP', 'MID'],
+  Leona: ['SUP'],
+  RekSai: ['JGL', 'TOP'],
+  Rell: ['SUP', 'JGL'],
+  Rengar: ['JGL', 'TOP'],
+  Lucian: ['BOT', 'MID'],
+  Lulu: ['SUP'],
+  Leblanc: ['MID'],
+  FakerLeblanc: ['MID'],
+  LeeSin: ['JGL'],
+  Riven: ['TOP', 'MID'],
+  Lissandra: ['MID'],
+  Lillia: ['JGL', 'TOP'],
+
+  // ㅁ
+  MasterYi: ['JGL'],
+  Maokai: ['SUP', 'JGL', 'TOP'],
+  Malzahar: ['MID'],
+  Malphite: ['TOP', 'MID', 'SUP'],
+  Mel: ['MID', 'SUP'],
+  Mordekaiser: ['TOP', 'JGL'],
+  Morgana: ['SUP', 'JGL', 'MID'],
+  DrMundo: ['TOP', 'JGL'],
+  Mundo: ['TOP', 'JGL'],
+  MissFortune: ['BOT', 'SUP'],
+  Milio: ['SUP'],
+
+  // ㅂ
+  Bard: ['SUP'],
+  Varus: ['BOT', 'MID'],
+  Vi: ['JGL'],
+  Veigar: ['MID', 'BOT', 'SUP'],
+  Vayne: ['BOT', 'TOP'],
+  Velkoz: ['SUP', 'MID'],
+  Vex: ['MID'],
+  Belveth: ['JGL'],
+  Volibear: ['TOP', 'JGL'],
+  Braum: ['SUP'],
+  Brand: ['SUP', 'JGL', 'MID'],
+  Briar: ['JGL', 'TOP'],
+  Vladimir: ['MID', 'TOP'],
+  Blitzcrank: ['SUP'],
+  Viego: ['JGL', 'MID'],
+  Viktor: ['MID'],
+  Poppy: ['TOP', 'JGL', 'SUP'],
+  Pyke: ['SUP', 'MID'],
+
+  // ㅅ
+  Sion: ['TOP', 'MID'],
+  Sylas: ['MID', 'JGL', 'TOP'],
+  Shaco: ['JGL', 'SUP'],
+  Senna: ['SUP', 'BOT'],
+  Seraphine: ['BOT', 'SUP', 'MID'],
+  Sejuani: ['JGL', 'TOP'],
+  Sett: ['TOP', 'SUP', 'MID'],
+  Sona: ['SUP'],
+  Soraka: ['SUP'],
+  Shen: ['TOP', 'SUP'],
+  Shyvana: ['JGL', 'TOP'],
+  Smolder: ['BOT', 'MID', 'TOP'],
+  Swain: ['SUP', 'MID', 'BOT'],
+  Skarner: ['JGL', 'TOP'],
+  Sivir: ['BOT'],
+  XinZhao: ['JGL'],
+  Syndra: ['MID', 'BOT'],
+  Singed: ['TOP'],
+  Thresh: ['SUP'],
+
+  // ㅇ
+  Ahri: ['MID'],
+  Amumu: ['JGL', 'SUP'],
+  AurelionSol: ['MID'],
+  Ivern: ['JGL', 'SUP'],
+  Azir: ['MID'],
+  Akali: ['MID', 'TOP'],
+  Akshan: ['MID', 'TOP'],
+  Aatrox: ['TOP'],
+  Aphelios: ['BOT'],
+  Alkali: ['MID', 'TOP'],
+  Alistar: ['SUP'],
+  Ambessa: ['TOP', 'MID', 'JGL'],
+  Annie: ['MID', 'SUP'],
+  Anivia: ['MID'],
+  Ashe: ['BOT', 'SUP'],
+  Yasuo: ['MID', 'TOP', 'BOT'],
+  Ekko: ['MID', 'JGL'],
+  Elise: ['JGL', 'SUP'],
+  MonkeyKing: ['JGL', 'TOP'],
+  Wukong: ['JGL', 'TOP'],
+  Aurora: ['MID', 'TOP'],
+  Ornn: ['TOP'],
+  Orianna: ['MID'],
+  Olaf: ['TOP', 'JGL'],
+  Yone: ['MID', 'TOP'],
+  Yorick: ['TOP'],
+  Udyr: ['JGL', 'TOP'],
+  Urgot: ['TOP'],
+  Warwick: ['JGL', 'TOP'],
+  Yuumi: ['SUP'],
+  Irelia: ['TOP', 'MID'],
+  Evelynn: ['JGL'],
+  Ezreal: ['BOT'],
+  Illaoi: ['TOP'],
+
+  // ㅈ
+  Zac: ['JGL', 'TOP', 'SUP'],
+  Janna: ['SUP'],
+  Jax: ['TOP', 'JGL'],
+  Zed: ['MID', 'JGL'],
+  Xerath: ['SUP', 'MID'],
+  Zeri: ['BOT'],
+  Jayce: ['TOP', 'MID'],
+  Zoe: ['MID', 'SUP'],
+  Ziggs: ['BOT', 'MID'],
+  Jhin: ['BOT'],
+  Zilean: ['SUP', 'MID'],
+  Jinx: ['BOT'],
+  Zyra: ['SUP', 'JGL', 'MID'],
+
+  // ㅊ
+  Chogath: ['TOP', 'MID'],
+
+  // ㅋ
+  Karma: ['SUP', 'MID', 'TOP'],
+  Camille: ['TOP', 'SUP'],
+  Kassadin: ['MID'],
+  Karthus: ['JGL', 'BOT', 'MID'],
+  Cassiopeia: ['MID', 'TOP', 'BOT'],
+  Kaisa: ['BOT'],
+  Khazix: ['JGL'],
+  Katarina: ['MID'],
+  Kalista: ['BOT'],
+  Kennen: ['TOP'],
+  Caitlyn: ['BOT'],
+  Kayn: ['JGL'],
+  Kayle: ['TOP', 'MID'],
+  KogMaw: ['BOT', 'MID'],
+  Corki: ['MID', 'BOT'],
+  Quinn: ['TOP'],
+  KSante: ['TOP', 'MID'],
+  Kled: ['TOP', 'MID'],
+  Qiyana: ['MID', 'JGL'],
+  Kindred: ['JGL'],
+
+  // ㅌ
+  Taric: ['SUP'],
+  Talon: ['MID', 'JGL'],
+  Taliyah: ['JGL', 'MID'],
+  TahmKench: ['TOP', 'SUP'],
+  Trundle: ['TOP', 'JGL'],
+  Tristana: ['BOT', 'MID'],
+  Tryndamere: ['TOP', 'MID'],
+  TwistedFate: ['MID', 'BOT', 'TOP'],
+  Twitch: ['BOT', 'SUP', 'JGL'],
+  Teemo: ['TOP'],
+
+  // ㅍ
+  Pantheon: ['TOP', 'MID', 'SUP', 'JGL'],
+  Fiddlesticks: ['JGL'],
+  Fiora: ['TOP'],
+  Fizz: ['MID'],
+
+  // ㅎ
+  Heimerdinger: ['TOP', 'MID', 'BOT', 'SUP'],
+  Hecarim: ['JGL'],
+  Hwei: ['MID', 'SUP', 'BOT'],
+};
+
+/**
+ * 챔피언의 플레이 포지션 목록을 반환합니다.
+ * 매핑 테이블에 없는 신규 챔피언은 Riot Data Dragon tags를 기반으로 자동 추정합니다.
+ */
+export function getChampionPositions(champ: ChampionInfo): ChampionPosition[] {
+  const direct = CHAMPION_POSITIONS[champ.id];
+  if (direct && direct.length > 0) {
+    return direct;
+  }
+
+  const positions: ChampionPosition[] = [];
+  const tags = champ.tags || [];
+
+  if (tags.includes('Marksman')) positions.push('BOT');
+  if (tags.includes('Support')) positions.push('SUP');
+  if (tags.includes('Mage')) positions.push('MID');
+  if (tags.includes('Assassin')) {
+    if (!positions.includes('MID')) positions.push('MID');
+    positions.push('JGL');
+  }
+  if (tags.includes('Tank')) {
+    if (!positions.includes('TOP')) positions.push('TOP');
+    if (!positions.includes('SUP')) positions.push('SUP');
+  }
+  if (tags.includes('Fighter')) {
+    if (!positions.includes('TOP')) positions.push('TOP');
+    if (!positions.includes('JGL')) positions.push('JGL');
+  }
+
+  return positions.length > 0 ? positions : ['MID'];
+}
+
